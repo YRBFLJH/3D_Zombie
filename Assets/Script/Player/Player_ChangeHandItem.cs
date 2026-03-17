@@ -4,14 +4,15 @@ using UnityEngine;
 
 public class Player_ChangeHandItem : MonoBehaviour
 {
-    private Animator animator;
+    private Player_Animator animator;
 
     public Transform gunPosition;
     public GameObject gun;
+    private GameObject currentGun;
 
     void Awake()
     {
-        animator = GetComponent<Animator>();
+        animator = GetComponent<Player_Animator>();
     }
 
     void Start()
@@ -24,12 +25,12 @@ public class Player_ChangeHandItem : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Tab))
         {
             Player.instance.isArmed = !Player.instance.isArmed;
-            animator.SetBool("isArmed", Player.instance.isArmed);
-            GameObject Gun = Instantiate(gun);
-            Gun.transform.SetParent(gunPosition,false);
-            gameObject.GetComponent<Player_Animator>().SetAnimation(PlayerAnimationState.Armed);
-            Debug.Log("isArmed:" + Player.instance.isArmed);
-            Debug.Log("isArmedAnima:" + animator.GetBool("isArmed"));
+            animator.PlayArmed(Player.instance.isArmed);
+            if (currentGun == null)
+            {
+                currentGun = Instantiate(gun);
+                currentGun.transform.SetParent(gunPosition,false);
+            }
         }
     }
 }

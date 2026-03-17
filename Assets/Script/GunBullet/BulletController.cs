@@ -6,6 +6,15 @@ public class BulletController : MonoBehaviour
 {
     public BulletData bulletData;
     private Rigidbody rb;
+    private Vector3 shootDirection;
+
+    public void SetShootDirection(Vector3 dir)
+    {
+        shootDirection = dir;
+
+        transform.rotation = Quaternion.LookRotation(shootDirection) * Quaternion.Euler(90, 0, 0);
+    }
+   
 
     void Awake()
     {
@@ -14,13 +23,11 @@ public class BulletController : MonoBehaviour
 
     void Start()
     {
-        
+        Destroy(gameObject, bulletData.lifeTime);
     }
 
-    // Update is called once per frame
     void Update()
     {
-        rb.velocity = transform.up * bulletData.speed;
-        Destroy(gameObject, bulletData.lifeTime);
+        rb.velocity = shootDirection * bulletData.speed;
     }
 }

@@ -13,21 +13,40 @@ public class GunController : MonoBehaviour
     private GameObject bulletPrefab;
     private GameObject bullet;
 
+    private Transform crosshair;
+
+    private Player_Shoot playerShoot;
+
+
+    private float lastShootTime;
+    private float shootRate => gunData.fireRate;
+
+
+    void  Awake()
+    {
+        playerShoot = Player.instance.GetComponent<Player_Shoot>();
+    }
+
 
     void Start()
     {
         currentBulletsInMag = gunData.shootMagazineSize;
         bulletPrefab = gunData.bulletPrefab;
         isReloading = false;
+
+        crosshair = Player.instance.GetComponent<Player_Shoot>().crosshair;
+
     }
 
     void Update()
     {
-        if(Input.GetMouseButtonDown(0) && !isReloading) //左键射击
+        if(Input.GetMouseButton(0) && !isReloading && Time.time >= lastShootTime + shootRate) //左键射击
         {
             if(currentBulletsInMag > 0)
             {
                 Shoot();
+                lastShootTime = Time.time;
+
             }
             // else
             // {
@@ -47,7 +66,11 @@ public class GunController : MonoBehaviour
 
     void Shoot()
     {
+        Ray ray = Camera.main.ScreenPointToRay(crosshair.position);
+
         SpawnBullet();
+        
+        bullet.GetComponent<BulletController>().SetShootDirection(ray.direction);
 
         //减少弹夹中的子弹数量
         currentBulletsInMag--;
@@ -65,5 +88,16 @@ public class GunController : MonoBehaviour
     void SpawnBullet()
     {
         bullet = Instantiate(bulletPrefab, firePoint.position, firePoint.rotation);
+    }
+
+    void OnEnable() 
+    {
+        playerShoot.canShoot = true;
+        lastShootTime = -shootRate; // 允许立即射击
+    }
+
+    void OnDisable() 
+    {
+        playerShoot.canShoot = false;
     }
 }

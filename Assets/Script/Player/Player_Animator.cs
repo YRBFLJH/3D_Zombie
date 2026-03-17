@@ -17,56 +17,73 @@ public enum PlayerAnimationState
 
 public class Player_Animator : MonoBehaviour
 {
+    public Transform crosshair; //准星位置
+
     private Animator animator;
+
+    //Hash比字符串更快性能更好
+    private readonly int idleHash = Animator.StringToHash("isIdle");
+    private readonly int movingHash = Animator.StringToHash("isMoving");
+    private readonly int runningHash = Animator.StringToHash("isRunning");
+    private readonly int armedHash = Animator.StringToHash("isArmed");
+    private readonly int aimHash = Animator.StringToHash("isAim");
+
+
+    private float ik_AllWeight;
+    private float ik_BodyWeight;
+    private float ik_HeadWeight;
+    private float ik_EyeWeight;
 
     void Awake()
     {
         animator = GetComponent<Animator>();
     }
 
-    void Start()
+    public void PlayIdle(bool isIdle)
     {
-        
+        animator.SetBool(idleHash, isIdle);
     }
 
-    void Update()
+    public void PlayerMove(bool isMoving)
     {
-        
+        animator.SetBool(movingHash, isMoving);
     }
 
-    public void SetAnimation(PlayerAnimationState state)
+    public void PlayerRun(bool isRunning)
     {
-        ResetAnimationState();
+        animator.SetBool(runningHash, isRunning);
+    }
 
-        switch(state)
+    public void PlayArmed(bool isArmed)
+    {
+        animator.SetBool(armedHash, isArmed);
+    }
+
+    public void PlayAim(bool isAiming)
+    {
+        animator.SetBool(aimHash, isAiming);
+    }
+    
+
+    void OnAnimatorIK(int layerIndex) //动画IK
+    {
+        if(layerIndex == 0) //只在基础层设置IK
         {
-            case PlayerAnimationState.Idle:
-                animator.SetBool("isIdle",true);
-                break;
-            case PlayerAnimationState.Walk:
-                animator.SetBool("isMoving",true);
-                break;
-            case PlayerAnimationState.Run:
-                animator.SetBool("isRunning",true);
-                break;
-            case PlayerAnimationState.Armed:
-                animator.SetBool("isArmed",true);
-                break;
-            case PlayerAnimationState.Aim:
-                animator.SetBool("isAim",true);
-                break;
-            case PlayerAnimationState.EndAim:
-                animator.SetBool("isAim",false);
-                break;
+            ik_AllWeight = 1;
+            ik_BodyWeight = 0.1f;
+            ik_HeadWeight = 0.1f;
+            ik_EyeWeight = 0.1f;
         }
-    }
+        else if(layerIndex == 1)
+        {
+            ik_AllWeight = 1;
+            ik_BodyWeight = 0.3f;
+            ik_HeadWeight = 0.3f;
+            ik_EyeWeight = 0.3f;
+        }
 
-    void ResetAnimationState()
-    {
-        animator.SetBool("isIdle",false);
-        animator.SetBool("isMoving",false);
-        animator.SetBool("isRunning",false);
-        // animator.SetBool("isArmed",false);
-        // animator.SetBool("isAim",false);
+
+        animator.SetLookAtWeight(ik_AllWeight, ik_BodyWeight, ik_HeadWeight, ik_EyeWeight); //设置权重(参数按顺序：总的、身体、头部、眼睛的权重)
+        animator.SetLookAtPosition(Camera.main.transform.position + Camera.main.transform.forward * 10f + Camera.main.transform.right * 0.9f); //设置IK目标位置（这里设置为摄像机前方一定距离的位置，可以根据需要调整）
     }
 }
