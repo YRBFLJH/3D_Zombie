@@ -8,7 +8,10 @@ public class GunController : MonoBehaviour
 
     public Transform firePoint;
 
+
     private int currentBulletsInMag; //弹夹剩余子弹
+    private int allBullets; //总子弹数量
+
     private bool isReloading;
     private GameObject bulletPrefab;
     private GameObject bullet;
@@ -16,7 +19,6 @@ public class GunController : MonoBehaviour
     private Transform crosshair;
 
     private Player_Shoot playerShoot;
-
 
     private float lastShootTime;
     private float shootRate => gunData.fireRate;
@@ -31,6 +33,9 @@ public class GunController : MonoBehaviour
     void Start()
     {
         currentBulletsInMag = gunData.shootMagazineSize;
+        allBullets = gunData.allMagazineSize;
+
+
         bulletPrefab = gunData.bulletPrefab;
         isReloading = false;
 
@@ -40,7 +45,7 @@ public class GunController : MonoBehaviour
 
     void Update()
     {
-        if(Input.GetMouseButton(0) && !isReloading && Time.time >= lastShootTime + shootRate) //左键射击
+        if(Input.GetMouseButton(0) && !isReloading && Time.time >= lastShootTime + shootRate && playerShoot.isAiming) //左键射击
         {
             if(currentBulletsInMag > 0)
             {
@@ -55,13 +60,16 @@ public class GunController : MonoBehaviour
             // }
         }
 
-        if(Input.GetKeyDown(KeyCode.R) && !isReloading) //按R换弹
+        if(Input.GetKeyDown(KeyCode.R) && !isReloading && Player.instance.isArmed) //按R换弹
         {
             if(currentBulletsInMag < gunData.shootMagazineSize)
             {
-                Reload();
+                isReloading = true;
+                playerShoot.Reload();
             }
         }
+
+        BulletAmoutInstance.instance.UpdateBulletAmount(currentBulletsInMag, allBullets);
     }
 
     void Shoot()
@@ -76,15 +84,6 @@ public class GunController : MonoBehaviour
         currentBulletsInMag--;
     }
 
-    void Reload()
-    {
-        isReloading = true;
-        //播放换弹音效
-        // AudioSource.PlayClipAtPoint(gunData.reloadSound, transform.position);
-        // //等待换弹时间
-        // Invoke("FinishReloading", gunData.reloadTime);
-    }
-
     void SpawnBullet()
     {
         bullet = Instantiate(bulletPrefab, firePoint.position, firePoint.rotation);
@@ -92,12 +91,28 @@ public class GunController : MonoBehaviour
 
     void OnEnable() 
     {
+        BulletAmoutInstance.instance.All.SetActive(true);
         playerShoot.canShoot = true;
         lastShootTime = -shootRate; // 允许立即射击
+        playerShoot.SetCurrentGun(this);
     }
 
     void OnDisable() 
     {
-        playerShoot.canShoot = false;
+        if (BulletAmoutInstance.instance != null)
+            BulletAmoutInstance.instance.All.SetActive(false);
+        if (playerShoot != null)
+        {
+            playerShoot.canShoot = false;
+            playerShoot.SetCurrentGun(null);
+        }
     }
+
+    public void FinishReload()
+    {
+        allBullets -= gunData.shootMagazineSize - currentBulletsInMag;
+        currentBulletsInMag = gunData.shootMagazineSize;
+        isReloading = false;
+    }
+
 }

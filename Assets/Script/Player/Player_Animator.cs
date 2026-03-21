@@ -34,6 +34,8 @@ public class Player_Animator : MonoBehaviour
     private float ik_HeadWeight;
     private float ik_EyeWeight;
 
+    public float cameraRightOffset;
+
     void Awake()
     {
         animator = GetComponent<Animator>();
@@ -63,13 +65,18 @@ public class Player_Animator : MonoBehaviour
     {
         animator.SetBool(aimHash, isAiming);
     }
+
+    public void PlayReload()
+    {
+        animator.SetTrigger("canReload");
+    }
     
 
     void OnAnimatorIK(int layerIndex) //动画IK
     {
         if(layerIndex == 0) //只在基础层设置IK
         {
-            ik_AllWeight = 1;
+            ik_AllWeight = 0.8f;
             ik_BodyWeight = 0.1f;
             ik_HeadWeight = 0.1f;
             ik_EyeWeight = 0.1f;
@@ -77,13 +84,15 @@ public class Player_Animator : MonoBehaviour
         else if(layerIndex == 1)
         {
             ik_AllWeight = 1;
-            ik_BodyWeight = 0.3f;
-            ik_HeadWeight = 0.3f;
+            ik_BodyWeight = 0.9f;
+            ik_HeadWeight = 0.45f;
             ik_EyeWeight = 0.3f;
         }
 
 
         animator.SetLookAtWeight(ik_AllWeight, ik_BodyWeight, ik_HeadWeight, ik_EyeWeight); //设置权重(参数按顺序：总的、身体、头部、眼睛的权重)
-        animator.SetLookAtPosition(Camera.main.transform.position + Camera.main.transform.forward * 10f + Camera.main.transform.right * 0.9f); //设置IK目标位置（这里设置为摄像机前方一定距离的位置，可以根据需要调整）
+        animator.SetLookAtPosition(Camera.main.transform.position + Camera.main.transform.forward * 4f + Camera.main.transform.right * cameraRightOffset); //设置IK目标位置（这里设置为摄像机前方一定距离的位置，可以根据需要调整）
     }
+
+  
 }

@@ -48,8 +48,8 @@ public class Player_Move : MonoBehaviour
 
     void Start()
     {
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
+        // Cursor.lockState = CursorLockMode.Locked;
+        // Cursor.visible = false;
 
     }
 
@@ -147,8 +147,8 @@ public class Player_Move : MonoBehaviour
         }
         else //瞄准时
         {
-            Vector3 cameraForward = Camera.main.transform.forward;
-
+            
+            
             cameraForward.y = 0;
             cameraForward.Normalize();
 

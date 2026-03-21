@@ -31,6 +31,10 @@ public class Player_ChangeHandItem : MonoBehaviour
                 currentGun = Instantiate(gun);
                 currentGun.transform.SetParent(gunPosition,false);
             }
+            else
+            {
+                currentGun.SetActive(Player.instance.isArmed);
+            }
         }
     }
 }

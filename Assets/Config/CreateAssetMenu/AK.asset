@@ -20,7 +20,7 @@ MonoBehaviour:
   fireRate: 0.18
   range: 0
   shootMagazineSize: 30
-  allMagazineSize: 60
+  allMagazineSize: 180
   reloadTime: 0
   recoilForce: 0
   shootSound: {fileID: 0}
