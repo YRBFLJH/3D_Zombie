@@ -15,10 +15,10 @@ MonoBehaviour:
   itemName: "\u56DE\u84DD"
   id: 1
   icon: {fileID: 21300000, guid: 51576ee970765e1448f6cd45ad48ef5d, type: 3}
-  maxStack: 99
+  maxStack: 5
   isStackable: 1
-  width: 0
-  height: 0
+  width: 3
+  height: 3
   weight: 0
   itemType: 0
   restoreValue: 0

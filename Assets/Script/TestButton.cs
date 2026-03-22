@@ -19,7 +19,7 @@ public class TestButton : MonoBehaviour
     {
         for (int i = 0; i < itemData.Length; i++)
         {
-            BackpackManage.Instance.AddItem(itemData[i], 1);
+            BackpackManage.Instance.AddItem(itemData[i], 8);
         }
     }
 }

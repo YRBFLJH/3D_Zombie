@@ -22,4 +22,12 @@ MonoBehaviour:
   weight: 0
   itemType: 0
   maxWeight: 0
-  maxSlot: 0
+  slotsInLarge: 30
+  largeWidth: 5
+  largeHeight: 6
+  slotsInMiddle: 6
+  middleWidth: 3
+  middleHeight: 2
+  slotsInSmall: 2
+  smallWidth: 1
+  smallHeight: 2

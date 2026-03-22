@@ -1162,8 +1162,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   backpackData: {fileID: 11400000, guid: 34ef44d73eb5299449964ec3ebb66ecb, type: 2}
-  slotContainer: {fileID: 1541369762}
+  backpackArea: {fileID: 572223514}
   slotPrefab: {fileID: 4271873074212165387, guid: 5891678d723cc834eb63803fefe4cca1, type: 3}
+  slotLarge:
+  - {fileID: 1541369762}
+  slotMiddle:
+  - {fileID: 641148574}
+  slotSmall:
+  - {fileID: 1942035098}
+  - {fileID: 1012393972}
 --- !u!1 &963194225
 GameObject:
   m_ObjectHideFlags: 0
@@ -1719,7 +1726,7 @@ GameObject:
   - component: {fileID: 1541369763}
   - component: {fileID: 1541369765}
   m_Layer: 5
-  m_Name: LogicGridBig
+  m_Name: LogicGridLarge
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

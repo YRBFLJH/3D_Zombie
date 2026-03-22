@@ -1,133 +1,568 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 public class BackpackManage : MonoBehaviour
 {
     public static BackpackManage Instance;
-    public BackpackData backpackData; // 背包数据
 
-    public Transform slotContainer; // 背包逻辑格子父物体    统一管理背包格子区域：大、中、小，大的固定一个（序号0），中的、小的按情况派后
+    [Header("背包配置")]
+    public BackpackData backpackData;
+    public Transform backpackArea;
+    RectTransform areaRect;
+    public GameObject slotPrefab;
 
-    public GameObject slotPrefab; // 背包格子预制体
-    private List<GameObject> slots = new List<GameObject>(); // 存储格子实例的列表
+    [Header("各区域父节点")]
+    public Transform[] slotLarge;
+    public Transform[] slotMiddle;
+    public Transform[] slotSmall;
 
-    void Foreach()
+    private List<Slot[,]> largeGrids = new List<Slot[,]>();
+    private List<Slot[,]> middleGrids = new List<Slot[,]>();
+    private List<Slot[,]> smallGrids = new List<Slot[,]>();
+
+    private List<InventoryItem> items = new List<InventoryItem>();
+    private InventoryItem currentSelectedItem;
+    private InventoryItem draggingItem;
+
+    // 高亮记录
+    private int highlightX, highlightY;
+    private Slot[,] highlightGrid;
+    private List<Slot> currentHighlightSlots = new List<Slot>();
+    private bool canPlaceAtHighlight;
+
+    // 用于避免闪烁的上次有效格子
+    private Slot lastValidSlot;
+
+
+    //性能优化
+    Vector2 lastMousePos;
+    float checkInterval = 0.03f; // 拖拽时的检测间隔，防止每帧多次循环遍历，提升性能
+    float lastCheckTime;
+
+    void Awake() 
     {
-        for (int i = 0; i < 30; i++)
-        {
-            
-        }
+        Instance = this;
+        areaRect = backpackArea.GetComponent<RectTransform>();
     }
 
-    void Awake()
-    {
-        if (Instance == null) Instance = this;
-        else Destroy(gameObject);
+    void Start() => InitBackpack();
 
-    }
-
-    void Start()
-    {
-        InitBackpack();
-    }
-
-
+    #region 初始化网格
     void InitBackpack()
     {
-        for (int i = 0; i < 30; i++)
+        // 大型区域
+        int largeW = backpackData.largeWidth;
+        int largeH = backpackData.largeHeight;
+        foreach (Transform area in slotLarge)
         {
+            Slot[,] grid = new Slot[largeW, largeH];
+            for (int y = 0; y < largeH; y++)
+                for (int x = 0; x < largeW; x++)
+                    CreateSlot(area, x, y, grid);
+            largeGrids.Add(grid);
+        }
 
-            GameObject slotObj = Instantiate(slotPrefab, slotContainer);
-            slots.Add(slotObj);
-            Slot slot = slotObj.GetComponent<Slot>();
+        // 中型区域
+        int middleW = backpackData.middleWidth;
+        int middleH = backpackData.middleHeight;
+        foreach (Transform area in slotMiddle)
+        {
+            Slot[,] grid = new Slot[middleW, middleH];
+            for (int y = 0; y < middleH; y++)
+                for (int x = 0; x < middleW; x++)
+                    CreateSlot(area, x, y, grid);
+            middleGrids.Add(grid);
+        }
 
-            // 订阅格子委托事件
-            slot.onSlotRightClick += RightClickSlot;
+        // 小型区域
+        int smallW = backpackData.smallWidth;
+        int smallH = backpackData.smallHeight;
+        foreach (Transform area in slotSmall)
+        {
+            Slot[,] grid = new Slot[smallW, smallH];
+            for (int y = 0; y < smallH; y++)
+                for (int x = 0; x < smallW; x++)
+                    CreateSlot(area, x, y, grid);
+            smallGrids.Add(grid);
         }
     }
 
-    // 右键点击格子事件
-    void RightClickSlot(Slot slot)
+    void CreateSlot(Transform parent, int x, int y, Slot[,] grid)
     {
-        if (slot.currentItem != null)
-        {
-            slot.currentItem.Use(Player.instance);
-        }
+        GameObject slotObj = Instantiate(slotPrefab, parent);
+        Slot slot = slotObj.GetComponent<Slot>();
+        slot.x = x;
+        slot.y = y;
+        slot.parentGrid = grid;
+        slot.onSlotRightClick += RightClickSlot;
+        grid[x, y] = slot;
+    }
+    #endregion
+
+    #region 拖拽辅助
+    public void StartDrag(InventoryItem item)
+    {
+        draggingItem = item;
+        highlightGrid = null;
+        canPlaceAtHighlight = false;
+        lastValidSlot = null;
     }
 
-
-    // 格子交换、合并逻辑
-    public void SwapSlots(Slot slotA, Slot slotB)
+    public void OnDrag(InventoryItem item, PointerEventData eventData)
     {
-        if(slotB.currentItem == null)
-        {
-            slotB.SetSlot(slotA.currentItem, slotA.currentAmount);
-            slotA.ClearSlot();
-            return;
-        }
+        if (draggingItem != item) return;
 
-        if (slotB.currentItem != null && slotA.currentItem.id == slotB.currentItem.id && slotA.currentItem.isStackable) // 同种可堆叠物品合并
+        if (Time.time - lastCheckTime < checkInterval && Vector2.Distance(Input.mousePosition, lastMousePos) < 5f) return;
+        lastMousePos = Input.mousePosition;
+        lastCheckTime = Time.time;
+
+        Slot targetSlot = GetSlotUnderMouse(eventData);
+        bool inBackpack = IsPointInAnyBackpackArea(Input.mousePosition, eventData);
+
+        if (targetSlot != null)
         {
-            int total = slotA.currentAmount + slotB.currentAmount;
-            if (total <= slotA.currentItem.maxStack)
+            // 更新最近有效格子
+            lastValidSlot = targetSlot;
+            // 根据当前鼠标下的格子更新高亮
+            UpdateHighlightForSlot(item, targetSlot);
+        }
+        else if (inBackpack)
+        {
+            // 鼠标在背包区域内但没有命中格子，使用上次有效格子（如果有）
+            if (lastValidSlot != null)
             {
-                // 全部合并到B，清空A
-                slotB.SetSlot(slotB.currentItem, total);
-                slotA.ClearSlot();
+                UpdateHighlightForSlot(item, lastValidSlot);
             }
             else
             {
-                // 超过最大堆叠，B满，A剩余
-                slotB.SetSlot(slotB.currentItem, slotB.currentItem.maxStack);
-                slotA.SetSlot(slotA.currentItem, total - slotB.currentItem.maxStack);
+                ClearHighlight();
             }
-            slotA.UpdateUI();
-            slotB.UpdateUI();
         }
         else
         {
-            ItemData tempItem = slotA.currentItem;
-            int tempAmount = slotA.currentAmount;
-
-            slotA.SetSlot(slotB.currentItem, slotB.currentAmount);
-            slotB.SetSlot(tempItem, tempAmount);
+            // 鼠标离开背包区域，清除高亮和上次有效
+            ClearHighlight();
+            lastValidSlot = null;
         }
+    }
+
+
+    /// <summary>
+    /// 根据给定格子更新高亮
+    /// </summary>
+    private void UpdateHighlightForSlot(InventoryItem item, Slot slot)
+    {
+        int bestX, bestY;
+        bool found = FindClosestPlacement(item, slot.x, slot.y, slot.parentGrid, out bestX, out bestY);
+        if (found)
+        {
+            HighlightPlacement(item, slot.parentGrid, bestX, bestY, true);
+            highlightX = bestX;
+            highlightY = bestY;
+            highlightGrid = slot.parentGrid;
+            canPlaceAtHighlight = true;
+        }
+        else
+        {
+            HighlightPlacement(item, slot.parentGrid, slot.x, slot.y, false);
+            highlightX = slot.x;
+            highlightY = slot.y;
+            highlightGrid = slot.parentGrid;
+            canPlaceAtHighlight = false;
+        }
+    }
+
+    public void EndDrag(InventoryItem item, PointerEventData eventData)
+    {
+        if (draggingItem != item) return;
+
+        if (!IsPointInAnyBackpackArea(Input.mousePosition, eventData))
+        {
+            highlightGrid = null;
+            DropItem(item);
+            RemoveItem(item);
+        }
+
+        if (highlightGrid != null && canPlaceAtHighlight)
+        {
+            TryMoveItem(item, highlightGrid, highlightX, highlightY, item.isRotated);
+        }
+
+        ClearHighlight();
+        draggingItem = null;
+        highlightGrid = null;
+        canPlaceAtHighlight = false;
+        lastValidSlot = null;
+    }
+
+    /// <summary>
+    /// 以参考格子 (refX, refY) 为中心，尝试将物品放置在中心、上、下、左、右五个位置
+    /// </summary>
+    private bool FindClosestPlacement(InventoryItem item, int refX, int refY, Slot[,] grid, out int bestX, out int bestY)
+    {
+        int width = item.Width;
+        int height = item.Height;
+        int gridW = grid.GetLength(0);
+        int gridH = grid.GetLength(1);
+
+        List<Vector2Int> candidates = new List<Vector2Int>();
+
+        // 中心
+        if (refX >= 0 && refX + width <= gridW && refY >= 0 && refY + height <= gridH)
+        {
+            if (CanPlaceItemAt(item, refX, refY, item.isRotated, grid))
+                candidates.Add(new Vector2Int(refX, refY));
+        }
+
+        // 上方
+        int yUp = refY - height;
+        if (yUp >= 0 && yUp + height <= gridH && refX >= 0 && refX + width <= gridW)
+        {
+            if (CanPlaceItemAt(item, refX, yUp, item.isRotated, grid))
+                candidates.Add(new Vector2Int(refX, yUp));
+        }
+
+        // 下方
+        int yDown = refY + 1;
+        if (yDown >= 0 && yDown + height <= gridH && refX >= 0 && refX + width <= gridW)
+        {
+            if (CanPlaceItemAt(item, refX, yDown, item.isRotated, grid))
+                candidates.Add(new Vector2Int(refX, yDown));
+        }
+
+        // 左侧
+        int xLeft = refX - width;
+        if (xLeft >= 0 && xLeft + width <= gridW && refY >= 0 && refY + height <= gridH)
+        {
+            if (CanPlaceItemAt(item, xLeft, refY, item.isRotated, grid))
+                candidates.Add(new Vector2Int(xLeft, refY));
+        }
+
+        // 右侧
+        int xRight = refX + 1;
+        if (xRight >= 0 && xRight + width <= gridW && refY >= 0 && refY + height <= gridH)
+        {
+            if (CanPlaceItemAt(item, xRight, refY, item.isRotated, grid))
+                candidates.Add(new Vector2Int(xRight, refY));
+        }
+
+        if (candidates.Count == 0)
+        {
+            bestX = bestY = -1;
+            return false;
+        }
+
+        // 选择距离最近
+        int bestDist = int.MaxValue;
+        bestX = candidates[0].x;
+        bestY = candidates[0].y;
+        foreach (var pos in candidates)
+        {
+            int dist = Mathf.Abs(pos.x - refX) + Mathf.Abs(pos.y - refY);
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                bestX = pos.x;
+                bestY = pos.y;
+            }
+        }
+        return true;
+    }
+
+    private void HighlightPlacement(InventoryItem item, Slot[,] grid, int x, int y, bool canPlace)
+    {
+        // 位置不变直接return，不重复刷新,性能优化
+        if (highlightGrid == grid && highlightX == x && highlightY == y) return;
+
+        ClearHighlight();
+
+        int width = item.Width;
+        int height = item.Height;
+        for (int dy = 0; dy < height; dy++)
+        {
+            for (int dx = 0; dx < width; dx++)
+            {
+                int gx = x + dx;
+                int gy = y + dy;
+                if (gx >= 0 && gx < grid.GetLength(0) && gy >= 0 && gy < grid.GetLength(1))
+                {
+                    Slot slot = grid[gx, gy];
+                    slot.SetHighlight(true, canPlace ? Color.green : Color.red);
+                    currentHighlightSlots.Add(slot);
+                }
+            }
+        }
+    }
+
+    private void ClearHighlight()
+    {
+        foreach (Slot slot in currentHighlightSlots)
+            slot.SetHighlight(false, Color.clear);
+        currentHighlightSlots.Clear();
+    }
+
+    public Slot GetSlotUnderMouse(PointerEventData eventData)
+    {
+        GameObject hit = eventData.pointerCurrentRaycast.gameObject;
+        return hit?.GetComponent<Slot>();
+    }
+
+    bool IsPointInAnyBackpackArea(Vector2 mousePos, PointerEventData eventData)
+    {
+        if(RectTransformUtility.RectangleContainsScreenPoint(areaRect, mousePos, eventData.pressEventCamera))
+        {Debug.Log("物品已放入背包");
+            return true;
+
+        }
+        return false;
+    }
+
+    void DropItem(InventoryItem item) => Debug.Log($"丢弃物品：{item.item.itemName} x{item.amount}");
+    #endregion
+
+    #region 物品操作（完整保留，与原代码相同，为简洁省略部分注释）
+    public bool TryFindEmptySlot(int width, int height, Slot[,] grid, out int outX, out int outY)
+    {
+        int gridW = grid.GetLength(0);
+        int gridH = grid.GetLength(1);
+        for (int y = 0; y <= gridH - height; y++)
+            for (int x = 0; x <= gridW - width; x++)
+            {
+                bool free = true;
+                for (int dy = 0; dy < height; dy++)
+                    for (int dx = 0; dx < width; dx++)
+                        if (grid[x + dx, y + dy].occupiedBy != null)
+                        {
+                            free = false;
+                            break;
+                        }
+                if (free)
+                {
+                    outX = x;
+                    outY = y;
+                    return true;
+                }
+            }
+        outX = outY = -1;
+        return false;
     }
 
     public void AddItem(ItemData item, int amount)
     {
-        // 先尝试堆叠到已有的同种物品格子
-        foreach (GameObject slotObj in slots)
-        {
-            Slot slot = slotObj.GetComponent<Slot>();
-            if (slot.currentItem != null && slot.currentItem.id == item.id && slot.currentItem.isStackable)
+        // 堆叠
+        foreach (InventoryItem invItem in items)
+            if (invItem.item.id == item.id && item.isStackable)
             {
-                int availableSpace = item.maxStack - slot.currentAmount;
-                if (availableSpace > 0)
+                int canAdd = item.maxStack - invItem.amount;
+                if (canAdd > 0)
                 {
-                    int addAmount = Mathf.Min(availableSpace, amount);
-                    slot.SetSlot(item, slot.currentAmount + addAmount);
-                    amount -= addAmount;
-                    if (amount <= 0) return; // 已经添加完了
+                    int add = Mathf.Min(canAdd, amount);
+                    invItem.amount += add;
+                    amount -= add;
+                    UpdateItemUI(invItem);
+                    if (amount <= 0) return;
                 }
             }
+
+        if (amount <= 0) return;
+
+        Slot[,] targetGrid = null;
+        int outX = -1, outY = -1;
+
+        if (item.width <= 2 && item.height <= 2)
+        {
+            foreach (var grid in smallGrids)
+                if (TryFindEmptySlot(item.width, item.height, grid, out outX, out outY))
+                {
+                    targetGrid = grid;
+                    break;
+                }
+        }
+        if (targetGrid == null && item.width <= 3 && item.height <= 3)
+        {
+            foreach (var grid in middleGrids)
+                if (TryFindEmptySlot(item.width, item.height, grid, out outX, out outY))
+                {
+                    targetGrid = grid;
+                    break;
+                }
+        }
+        if (targetGrid == null)
+        {
+            foreach (var grid in largeGrids)
+                if (TryFindEmptySlot(item.width, item.height, grid, out outX, out outY))
+                {
+                    targetGrid = grid;
+                    break;
+                }
         }
 
-        // 如果还有剩余数量，放到空格子里
-        foreach (GameObject slotObj in slots)
+        if (targetGrid != null)
         {
-            Slot slot = slotObj.GetComponent<Slot>();
-            if (slot.currentItem == null) // 空格子
+            InventoryItem newItem = new InventoryItem(item, amount, outX, outY, targetGrid);
+            items.Add(newItem);
+            for (int dy = 0; dy < newItem.Height; dy++)
+                for (int dx = 0; dx < newItem.Width; dx++)
+                    targetGrid[outX + dx, outY + dy].SetOccupiedBy(newItem);
+            UpdateItemUI(newItem);
+        }
+        else
+        {
+            Debug.Log("背包已满，无法添加物品：" + item.itemName);
+        }
+    }
+
+    public void RemoveItem(InventoryItem item)
+    {
+        items.Remove(item);
+        Slot[,] grid = item.parentGrid;
+        for (int dy = 0; dy < item.Height; dy++)
+            for (int dx = 0; dx < item.Width; dx++)
+                grid[item.x + dx, item.y + dy].ClearOccupied();
+        for (int dy = 0; dy < item.Height; dy++)
+            for (int dx = 0; dx < item.Width; dx++)
+                grid[item.x + dx, item.y + dy].UpdateUI();
+    }
+
+    public bool TryMoveItem(InventoryItem item, Slot[,] newGrid, int newX, int newY, bool rotated)
+    {
+        int width = rotated ? item.item.height : item.item.width;
+        int height = rotated ? item.item.width : item.item.height;
+
+        if (newX < 0 || newY < 0 || newX + width > newGrid.GetLength(0) || newY + height > newGrid.GetLength(1))
+            return false;
+
+        for (int dy = 0; dy < height; dy++)
+            for (int dx = 0; dx < width; dx++)
+                if (newGrid[newX + dx, newY + dy].occupiedBy != null && newGrid[newX + dx, newY + dy].occupiedBy != item)
+                    return false;
+
+        Slot[,] oldGrid = item.parentGrid;
+        int oldX = item.x, oldY = item.y;
+        int oldWidth = item.Width, oldHeight = item.Height;
+
+        for (int dy = 0; dy < oldHeight; dy++)
+            for (int dx = 0; dx < oldWidth; dx++)
+                oldGrid[oldX + dx, oldY + dy].ClearOccupied();
+
+        item.x = newX;
+        item.y = newY;
+        item.isRotated = rotated;
+        item.parentGrid = newGrid;
+
+        for (int dy = 0; dy < height; dy++)
+            for (int dx = 0; dx < width; dx++)
+                newGrid[newX + dx, newY + dy].SetOccupiedBy(item);
+
+        for (int dy = 0; dy < oldHeight; dy++)
+            for (int dx = 0; dx < oldWidth; dx++)
+                oldGrid[oldX + dx, oldY + dy].UpdateUI();
+        for (int dy = 0; dy < height; dy++)
+            for (int dx = 0; dx < width; dx++)
+                newGrid[newX + dx, newY + dy].UpdateUI();
+
+        return true;
+    }
+
+    public bool CanPlaceItemAt(InventoryItem item, int x, int y, bool rotated, Slot[,] grid)
+    {
+        int width = rotated ? item.item.height : item.item.width;
+        int height = rotated ? item.item.width : item.item.height;
+        if (x < 0 || y < 0 || x + width > grid.GetLength(0) || y + height > grid.GetLength(1))
+            return false;
+        for (int dy = 0; dy < height; dy++)
+            for (int dx = 0; dx < width; dx++)
+                if (grid[x + dx, y + dy].occupiedBy != null && grid[x + dx, y + dy].occupiedBy != item)
+                    return false;
+        return true;
+    }
+
+    private void UpdateItemUI(InventoryItem item)
+    {
+        Slot[,] grid = item.parentGrid;
+        for (int dy = 0; dy < item.Height; dy++)
+            for (int dx = 0; dx < item.Width; dx++)
+                grid[item.x + dx, item.y + dy].UpdateUI();
+    }
+    #endregion
+
+    #region 选中与旋转
+    public void SelectItem(InventoryItem item)
+    {
+        if (currentSelectedItem == item)
+        {
+            // 如果点击同一个格子，取消选中
+            if (currentSelectedItem != null)
             {
-                int addAmount = Mathf.Min(item.maxStack, amount);
-                slot.SetSlot(item, addAmount);
-                amount -= addAmount;
-                if (amount <= 0) return; // 已经添加完了
+                Slot[,] grid = currentSelectedItem.parentGrid;
+                for (int dy = 0; dy < currentSelectedItem.Height; dy++)
+                    for (int dx = 0; dx < currentSelectedItem.Width; dx++)
+                        grid[currentSelectedItem.x + dx, currentSelectedItem.y + dy].selectBorder.SetActive(false);
+                currentSelectedItem = null;
             }
         }
-
-        Debug.Log("背包已满，无法添加更多物品！");
+        else
+        {
+            // 取消之前的选中
+            if (currentSelectedItem != null)
+            {
+                Slot[,] grid = currentSelectedItem.parentGrid;
+                for (int dy = 0; dy < currentSelectedItem.Height; dy++)
+                    for (int dx = 0; dx < currentSelectedItem.Width; dx++)
+                        grid[currentSelectedItem.x + dx, currentSelectedItem.y + dy].selectBorder.SetActive(false);
+            }
+            // 选中新的格子
+            currentSelectedItem = item;
+            if (currentSelectedItem != null)
+            {
+                Slot[,] grid = currentSelectedItem.parentGrid;
+                for (int dy = 0; dy < currentSelectedItem.Height; dy++)
+                    for (int dx = 0; dx < currentSelectedItem.Width; dx++)
+                        grid[currentSelectedItem.x + dx, currentSelectedItem.y + dy].selectBorder.SetActive(true);
+            }
+        }
     }
+
+    void Update()
+    {
+        if (currentSelectedItem != null && Input.GetKeyDown(KeyCode.R))
+            RotateSelectedItem();
+    }
+
+    public void RotateSelectedItem()
+    {
+        if (currentSelectedItem == null) return;
+        if (CanPlaceItemAt(currentSelectedItem, currentSelectedItem.x, currentSelectedItem.y, !currentSelectedItem.isRotated, currentSelectedItem.parentGrid))
+        {
+            Slot[,] grid = currentSelectedItem.parentGrid;
+            for (int dy = 0; dy < currentSelectedItem.Height; dy++)
+                for (int dx = 0; dx < currentSelectedItem.Width; dx++)
+                    grid[currentSelectedItem.x + dx, currentSelectedItem.y + dy].ClearOccupied();
+
+            currentSelectedItem.isRotated = !currentSelectedItem.isRotated;
+
+            for (int dy = 0; dy < currentSelectedItem.Height; dy++)
+                for (int dx = 0; dx < currentSelectedItem.Width; dx++)
+                    grid[currentSelectedItem.x + dx, currentSelectedItem.y + dy].SetOccupiedBy(currentSelectedItem);
+
+            for (int dy = 0; dy < currentSelectedItem.Height; dy++)
+                for (int dx = 0; dx < currentSelectedItem.Width; dx++)
+                    grid[currentSelectedItem.x + dx, currentSelectedItem.y + dy].UpdateUI();
+        }
+        else
+        {
+            Debug.Log("无法旋转，空间不足");
+        }
+    }
+    #endregion
+
+    #region 事件响应
+    void RightClickSlot(Slot slot)
+    {
+        if (slot.occupiedBy != null)
+            slot.occupiedBy.item.Use(Player.instance);
+    }
+    #endregion
 }
