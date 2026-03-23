@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Runtime.InteropServices.WindowsRuntime;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -21,6 +22,8 @@ public class BackpackManage : MonoBehaviour
     private List<Slot[,]> largeGrids = new List<Slot[,]>();
     private List<Slot[,]> middleGrids = new List<Slot[,]>();
     private List<Slot[,]> smallGrids = new List<Slot[,]>();
+
+    static Dictionary<int,ItemData> itemMap = new Dictionary<int,ItemData>();
 
     private List<InventoryItem> items = new List<InventoryItem>();
     private InventoryItem currentSelectedItem;
@@ -322,7 +325,31 @@ public class BackpackManage : MonoBehaviour
     void DropItem(InventoryItem item) => Debug.Log($"丢弃物品：{item.item.itemName} x{item.amount}");
     #endregion
 
-    #region 物品操作（完整保留，与原代码相同，为简洁省略部分注释）
+    #region 物品信息注册
+    public static void RegisterItem(ItemData item)
+    {
+        if (!itemMap.ContainsKey(item.id))
+        {
+            itemMap.Add(item.id, item);
+        }
+    }
+
+    public static ItemData GetItemData(int itemId)
+    {
+        if (itemMap.ContainsKey(itemId))
+        {
+            return itemMap[itemId];
+        }
+        return null;
+    }
+
+    #endregion
+
+
+
+
+
+    #region 物品操作
     public bool TryFindEmptySlot(int width, int height, Slot[,] grid, out int outX, out int outY)
     {
         int gridW = grid.GetLength(0);
@@ -401,7 +428,14 @@ public class BackpackManage : MonoBehaviour
 
         if (targetGrid != null)
         {
-            InventoryItem newItem = new InventoryItem(item, amount, outX, outY, targetGrid);
+            // 记录准确位置
+            string type = "";
+            int idx = -1;
+            if (largeGrids.Contains(targetGrid)) { type = "Large"; idx = largeGrids.IndexOf(targetGrid); }
+            else if (middleGrids.Contains(targetGrid)) { type = "Middle"; idx = middleGrids.IndexOf(targetGrid); }
+            else if (smallGrids.Contains(targetGrid)) { type = "Small"; idx = smallGrids.IndexOf(targetGrid); }
+
+            InventoryItem newItem = new InventoryItem(item, amount, outX, outY, targetGrid, type, idx);
             items.Add(newItem);
             for (int dy = 0; dy < newItem.Height; dy++)
                 for (int dx = 0; dx < newItem.Width; dx++)
@@ -563,6 +597,134 @@ public class BackpackManage : MonoBehaviour
     {
         if (slot.occupiedBy != null)
             slot.occupiedBy.item.Use(Player.instance);
+    }
+    #endregion
+
+
+
+
+
+    #region 辅助存档
+
+    // 保存所有物品
+    public InventorySaveData GetSaveData()
+    {
+        InventorySaveData data = new InventorySaveData();
+
+        foreach (var item in items) // 遍历背包物品
+        {
+            ItemsSaveData itemData = new ItemsSaveData
+        {
+            itemId = item.item.id,
+            amount = item.amount,
+            gridType = item.gridType,
+            gridIndex = item.gridIndex,
+            x = item.x,
+            y = item.y,
+            isRotated = item.isRotated
+        };
+        data.items.Add(itemData);
+        Debug.Log($"保存物品: {item.item.itemName}, 数量: {item.amount}");
+        }
+        return data;
+    }
+
+    // 得到物品所在的格子位置（用于加载重建）
+    Slot[,] GeetGridByTypeAndIndex(string gridType, int index)
+    {
+        switch (gridType)
+        {
+            case "Large":
+                if (index >= 0 && index < largeGrids.Count) return largeGrids[index];
+                break;
+            case "Middle":
+                if (index >= 0 && index < middleGrids.Count) return middleGrids[index];
+                break;
+            case "Small":
+                if (index >= 0 && index < smallGrids.Count) return smallGrids[index];
+                break;
+        }
+        return null;
+    }
+
+    // 清空背包
+    void Clear()
+    {
+        foreach (var grid in largeGrids) ClearGrid(grid);
+        foreach (var grid in middleGrids) ClearGrid(grid);
+        foreach (var grid in smallGrids) ClearGrid(grid);
+
+        items.Clear();
+        currentSelectedItem = null;
+        draggingItem = null;
+        ClearHighlight();
+    }
+    void ClearGrid(Slot[,] grid)
+    {
+        for (int y = 0; y < grid.GetLength(1); y++)
+        {
+            for (int x = 0; x < grid.GetLength(0); x++)
+            {
+                grid[x, y].ClearOccupied();
+            }
+        }
+    }
+
+    // 加载背包
+    public void LoadInventory(InventorySaveData data)
+    {
+        Debug.Log($"itemMap 中共有 {itemMap.Count} 个物品");
+        foreach (var kvp in itemMap)
+        {
+            Debug.Log($"注册物品 ID: {kvp.Key}, 名称: {kvp.Value.itemName}");
+        }
+
+
+        Clear();
+        foreach (var itemSave in data.items)
+        {
+            Debug.Log($"尝试加载物品: itemId={itemSave.itemId}, amount={itemSave.amount}, gridType={itemSave.gridType}, gridIndex={itemSave.gridIndex}, x={itemSave.x}, y={itemSave.y}, rotated={itemSave.isRotated}");
+
+            // 根据id找物品数据
+            ItemData itemData = GetItemData(itemSave.itemId);
+            if (itemData == null) 
+            {
+                Debug.LogError($"物品数据不存在: itemId={itemSave.itemId}");
+                continue;
+            }
+
+            // 找到物品保存的网格位置
+            Slot[,] targetGrid = GeetGridByTypeAndIndex(itemSave.gridType,itemSave.gridIndex);
+            if (targetGrid == null) 
+            {
+                Debug.LogError($"网格不存在: {itemSave.gridType}_{itemSave.gridIndex}");
+                continue;
+            }
+
+            // 创建物品
+            InventoryItem item = new InventoryItem(itemData, itemSave.amount, itemSave.x, itemSave.y, targetGrid, itemSave.gridType, itemSave.gridIndex, itemSave.isRotated);
+            items.Add(item);
+
+            Debug.Log("加载物品：" + itemData.itemName);
+            // 占用
+            int width = item.Width;
+            int height = item.Height;
+            for (int i = 0; i < height; i++)
+            {
+                for (int j = 0; j < width; j++)
+                {
+                    targetGrid[item.x + j, item.y + i].SetOccupiedBy(item);
+                }
+            }
+
+            for (int i = 0; i < height; i++)
+            {
+                for (int j = 0; j < width; j++)
+                {
+                targetGrid[item.x + j, item.y + i].UpdateUI();
+                }
+            }
+        }
     }
     #endregion
 }

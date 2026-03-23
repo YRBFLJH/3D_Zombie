@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Bga
   m_EditorClassIdentifier: 
   itemName: 
-  id: 0
+  id: 3
   icon: {fileID: 0}
   maxStack: 0
   isStackable: 0

@@ -18,7 +18,7 @@ public class Player_Move : MonoBehaviour
 
 
     private bool running;
-    public float moveSpeed = 3; //供外部修改
+    private float moveSpeed => Player.instance.speed;
     private float speed; //同步修改好的moveSpeed并根据奔跑状态切换
     private CharacterController characterController;
 
@@ -51,6 +51,7 @@ public class Player_Move : MonoBehaviour
         // Cursor.lockState = CursorLockMode.Locked;
         // Cursor.visible = false;
 
+        Player.instance.speed = 3f;
     }
 
     void Update()
