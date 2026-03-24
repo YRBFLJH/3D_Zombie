@@ -1,9 +1,12 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Mirror;
 
-public class Player_ChangeHandItem : MonoBehaviour
+public class Player_ChangeHandItem : NetworkBehaviour
 {
+    Player localPlayer;
+
     private Player_Animator animator;
 
     public Transform gunPosition;
@@ -17,15 +20,15 @@ public class Player_ChangeHandItem : MonoBehaviour
 
     void Start()
     {
-        
+        localPlayer = NetworkClient.localPlayer.GetComponent<Player>();
     }
     
     void Update()
     {
         if (Input.GetKeyDown(KeyCode.Tab))
         {
-            Player.instance.isArmed = !Player.instance.isArmed;
-            animator.PlayArmed(Player.instance.isArmed);
+            localPlayer.isArmed = !localPlayer.isArmed;
+            animator.PlayArmed(localPlayer.isArmed);
             if (currentGun == null)
             {
                 currentGun = Instantiate(gun);
@@ -33,7 +36,7 @@ public class Player_ChangeHandItem : MonoBehaviour
             }
             else
             {
-                currentGun.SetActive(Player.instance.isArmed);
+                currentGun.SetActive(localPlayer.isArmed);
             }
         }
     }

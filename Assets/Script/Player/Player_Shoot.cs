@@ -2,8 +2,9 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Cinemachine;
+using Mirror;
 
-public class Player_Shoot : MonoBehaviour
+public class Player_Shoot : NetworkBehaviour
 {
     public CinemachineVirtualCamera virtualCamera;
     public Transform crosshair;

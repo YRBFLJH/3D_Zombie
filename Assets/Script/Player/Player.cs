@@ -2,13 +2,12 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Net;
 using UnityEngine;
+using Mirror;
 
 
-public class Player : MonoBehaviour
+public class Player : NetworkBehaviour
 {
     public bool isArmed;
-
-    public static Player instance;
 
     [HideInInspector]
     public CharacterController characterController;
@@ -25,12 +24,7 @@ public class Player : MonoBehaviour
     public string playerName;
 
     void Awake()
-    {
-        if(instance == null)
-            instance = this;
-        else
-            Destroy(gameObject);
-
+    {        
         characterController = GetComponent<CharacterController>();
     }
 

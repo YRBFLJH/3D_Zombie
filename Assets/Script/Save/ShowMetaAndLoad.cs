@@ -5,9 +5,12 @@ using UnityEngine;
 using System;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
+using Mirror;
 
 public class ShowMetaAndLoad : MonoBehaviour
 {
+    Player localPlayer;
+
     [Header("组件")]
     public TMP_Text textId;
     public TMP_Text textLastSaveTime;
@@ -27,7 +30,8 @@ public class ShowMetaAndLoad : MonoBehaviour
 
     void Start() 
     {
-       loadButton.onClick.AddListener(Load);
+        localPlayer = NetworkClient.localPlayer.GetComponent<Player>();
+        loadButton.onClick.AddListener(Load);
     }
 
     void OnEnable() 
@@ -60,7 +64,7 @@ public class ShowMetaAndLoad : MonoBehaviour
             if (data != null)
             {
                 // 玩家数据
-                Player.instance.Teleportation(data.player.position); // 玩家位置
+                localPlayer.Teleportation(data.player.position); // 玩家位置
 
                 // 背包数据
                 BackpackManage.Instance.LoadInventory(data.inventory);

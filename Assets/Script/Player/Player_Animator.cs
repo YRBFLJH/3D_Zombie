@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Mirror;
 
 //动作种类
 public enum PlayerAnimationState
@@ -15,7 +16,7 @@ public enum PlayerAnimationState
     Injured
 }
 
-public class Player_Animator : MonoBehaviour
+public class Player_Animator : NetworkBehaviour
 {
     public Transform crosshair; //准星位置
 

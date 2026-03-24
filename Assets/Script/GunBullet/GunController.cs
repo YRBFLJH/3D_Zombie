@@ -1,9 +1,13 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SocialPlatforms;
+using Mirror;
 
 public class GunController : MonoBehaviour
 {
+    Player localPlayer;
+
     public GunData gunData;
 
     public Transform firePoint;
@@ -26,12 +30,14 @@ public class GunController : MonoBehaviour
 
     void  Awake()
     {
-        playerShoot = Player.instance.GetComponent<Player_Shoot>();
+        playerShoot = localPlayer.GetComponent<Player_Shoot>();
     }
 
 
     void Start()
     {
+        localPlayer = NetworkClient.localPlayer.GetComponent<Player>();
+
         currentBulletsInMag = gunData.shootMagazineSize;
         allBullets = gunData.allMagazineSize;
 
@@ -39,7 +45,7 @@ public class GunController : MonoBehaviour
         bulletPrefab = gunData.bulletPrefab;
         isReloading = false;
 
-        crosshair = Player.instance.GetComponent<Player_Shoot>().crosshair;
+        crosshair = localPlayer.GetComponent<Player_Shoot>().crosshair;
 
     }
 
@@ -60,7 +66,7 @@ public class GunController : MonoBehaviour
             // }
         }
 
-        if(Input.GetKeyDown(KeyCode.R) && !isReloading && Player.instance.isArmed) //按R换弹
+        if(Input.GetKeyDown(KeyCode.R) && !isReloading && localPlayer.isArmed) //按R换弹
         {
             if(currentBulletsInMag < gunData.shootMagazineSize)
             {

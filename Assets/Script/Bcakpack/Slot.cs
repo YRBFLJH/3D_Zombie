@@ -10,8 +10,8 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
     public Image icon;
     public TMP_Text count;
     public GameObject selectBorder;
-    public GameObject dragFllowImage;          // 拖拽时跟随鼠标的图标
-    public Image highlightImage;               // 拖拽落点高亮图片（需在预制体上添加）
+    public GameObject dragFllowImage;
+    public Image highlightImage;
 
     [Header("数据")]
     public int x, y;
@@ -20,7 +20,6 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
 
     public Action<Slot> onSlotRightClick;
 
-    // 当前区域格子尺寸（由 GridLayoutGroup 决定）
     public float cellWidth, cellHeight;
 
     void Awake()
@@ -29,7 +28,6 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
         if (highlightImage != null)
             highlightImage.gameObject.SetActive(false);
 
-        // 获取当前区域格子尺寸（每个区域独立）
         GridLayoutGroup gridGroup = GetComponentInParent<GridLayoutGroup>();
         if (gridGroup != null)
         {
@@ -43,7 +41,6 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
         if (selectBorder != null)
             selectBorder.GetComponent<Image>().raycastTarget = false;
 
-        // 确保格子本身的背景能接收射线（用于点击和拖拽）
         Image bg = GetComponent<Image>();
         if (bg != null) bg.raycastTarget = true;
 
@@ -53,28 +50,31 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
     #region UI更新
     public void UpdateUI()
     {
-        if (occupiedBy != null)
-        {
-            bool isTopLeft = (occupiedBy.x == x && occupiedBy.y == y);
-            if (isTopLeft)
-            {
-                icon.sprite = occupiedBy.item.icon;
-                icon.enabled = true;
-                count.text = occupiedBy.amount > 1 ? occupiedBy.amount.ToString() : "";
+        // 强制清空，防止残留
+        icon.enabled = false;
+        count.text = "";
 
-                // 图标覆盖整个物品区域
-                RectTransform iconRect = icon.GetComponent<RectTransform>();
-                iconRect.anchorMin = new Vector2(0, 1);
-                iconRect.anchorMax = new Vector2(0, 1);
-                iconRect.pivot = new Vector2(0, 1);
-                iconRect.anchoredPosition = Vector2.zero;
-                iconRect.sizeDelta = new Vector2(occupiedBy.Width * cellWidth, occupiedBy.Height * cellHeight);
-            }
-            else
-            {
-                icon.enabled = false;
-                count.text = "";
-            }
+        // 安全判断
+        if (occupiedBy.item == null)
+        {
+            icon.enabled = false;
+            count.text = "";
+            return;
+        }
+
+        bool isTopLeft = (occupiedBy.x == x && occupiedBy.y == y);
+        if (isTopLeft)
+        {
+            icon.sprite = occupiedBy.item.icon;
+            icon.enabled = true;
+            count.text = occupiedBy.amount > 1 ? occupiedBy.amount.ToString() : "";
+
+            RectTransform iconRect = icon.GetComponent<RectTransform>();
+            iconRect.anchorMin = new Vector2(0, 1);
+            iconRect.anchorMax = new Vector2(0, 1);
+            iconRect.pivot = new Vector2(0, 1);
+            iconRect.anchoredPosition = Vector2.zero;
+            iconRect.sizeDelta = new Vector2(occupiedBy.Width * cellWidth, occupiedBy.Height * cellHeight);
         }
         else
         {
@@ -91,7 +91,7 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
 
     public void ClearOccupied()
     {
-        occupiedBy = null;
+        occupiedBy = new InventoryItem();
         UpdateUI();
     }
     #endregion
@@ -109,7 +109,7 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
     #region 交互事件
     public void OnPointerClick(PointerEventData eventData)
     {
-        if (occupiedBy != null)
+        if (occupiedBy.item != null)
         {
             if (eventData.button == PointerEventData.InputButton.Right)
                 onSlotRightClick?.Invoke(this);
@@ -118,31 +118,28 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
         }
         else
         {
-            BackpackManage.Instance.SelectItem(null);
+            BackpackManage.Instance.SelectItem(new InventoryItem());
         }
     }
 
     public void OnBeginDrag(PointerEventData eventData)
     {
-        if (occupiedBy == null) return;
+        if (occupiedBy.item == null) return;
         BackpackManage.Instance.StartDrag(occupiedBy);
-        GetComponent<Image>().raycastTarget = false;   // 暂时关闭自身射线，避免干扰
+        GetComponent<Image>().raycastTarget = false;
     }
 
     public void OnDrag(PointerEventData eventData)
     {
-        if (occupiedBy == null) return;
+        if (occupiedBy.item == null) return;
 
-        // 显示跟随鼠标的图标，并动态调整大小以适应目标区域
         dragFllowImage.SetActive(true);
         dragFllowImage.GetComponent<Image>().sprite = occupiedBy.item.icon;
         dragFllowImage.transform.position = Input.mousePosition;
 
-        // 获取鼠标下方的格子，用于调整图标大小（适应目标区域的格子尺寸）
         Slot targetSlot = BackpackManage.Instance.GetSlotUnderMouse(eventData);
         if (targetSlot != null)
         {
-            // 使用目标区域的格子尺寸调整拖拽图标大小
             dragFllowImage.GetComponent<RectTransform>().sizeDelta = new Vector2(
                 occupiedBy.Width * targetSlot.cellWidth,
                 occupiedBy.Height * targetSlot.cellHeight
@@ -150,7 +147,6 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
         }
         else
         {
-            // 没有目标时，使用当前区域的尺寸
             dragFllowImage.GetComponent<RectTransform>().sizeDelta = new Vector2(
                 occupiedBy.Width * cellWidth,
                 occupiedBy.Height * cellHeight
@@ -163,12 +159,15 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
 
     public void OnEndDrag(PointerEventData eventData)
     {
-        if (occupiedBy == null) return;
+        if (occupiedBy.item == null) return;
         dragFllowImage.SetActive(false);
-        BackpackManage.Instance.SelectItem(null);
+        BackpackManage.Instance.SelectItem(new InventoryItem());
         BackpackManage.Instance.EndDrag(occupiedBy, eventData);
         Cursor.visible = true;
-        GetComponent<Image>().raycastTarget = true;   // 恢复射线检测
+        GetComponent<Image>().raycastTarget = true;
+        
+        // 拖动结束强制刷新整个背包（关键修复）
+        BackpackManage.Instance.RefreshAllGrids();
     }
     #endregion
 }

@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using System;
+using Mirror;
 
 public class SaveButton : MonoBehaviour
 {
+    Player localPlayer;
     Button button;
 
     SaveGameData allSaveData;
@@ -13,6 +15,8 @@ public class SaveButton : MonoBehaviour
 
     void Start()
     {
+        localPlayer = NetworkClient.localPlayer.GetComponent<Player>();
+
         button = GetComponent<Button>();
         button.onClick.AddListener(Save);
 
@@ -51,15 +55,15 @@ public class SaveButton : MonoBehaviour
         // 玩家数据
         var playerSaveData = new PlayerSaveData()
         {
-        position = new Vector3Data(Player.instance.transform.position.x, Player.instance.transform.position.y, Player.instance.transform.position.z),
-        playerName = Player.instance.playerName,
-        level = Player.instance.level,
-        gold = Player.instance.gold,
-        health = Player.instance.health,
-        maxHealth = Player.instance.maxHealth,
-        experience = Player.instance.experience,
-        maxExperience = Player.instance.maxExperience,
-        speed = Player.instance.speed,
+        position = new Vector3Data(localPlayer.transform.position.x, localPlayer.transform.position.y, localPlayer.transform.position.z),
+        playerName = localPlayer.playerName,
+        level = localPlayer.level,
+        gold = localPlayer.gold,
+        health = localPlayer.health,
+        maxHealth = localPlayer.maxHealth,
+        experience = localPlayer.experience,
+        maxExperience = localPlayer.maxExperience,
+        speed = localPlayer.speed,
         };
         allSaveData.player = playerSaveData; 
 

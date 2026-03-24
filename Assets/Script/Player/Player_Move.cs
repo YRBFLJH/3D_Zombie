@@ -2,9 +2,13 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEditor.Build.Content;
 using UnityEngine;
+using Mirror;
 
-public class Player_Move : MonoBehaviour
+public class Player_Move : NetworkBehaviour
 {
+    Player localPlayer;
+
+
     //X轴Y轴灵敏度
     public float rotationSpeedX = 2f; 
     public float rotationSpeedY = 1f;
@@ -18,7 +22,7 @@ public class Player_Move : MonoBehaviour
 
 
     private bool running;
-    private float moveSpeed => Player.instance.speed;
+    private float moveSpeed => localPlayer.speed;
     private float speed; //同步修改好的moveSpeed并根据奔跑状态切换
     private CharacterController characterController;
 
@@ -51,11 +55,14 @@ public class Player_Move : MonoBehaviour
         // Cursor.lockState = CursorLockMode.Locked;
         // Cursor.visible = false;
 
-        Player.instance.speed = 3f;
+        localPlayer = NetworkClient.localPlayer.GetComponent<Player>();
+
+        localPlayer.speed = 3f;
     }
 
     void Update()
     {
+        // if (!isLocalPlayer) return;
         Move();
     }
 
