@@ -8,110 +8,138 @@ public class PlayerBackpack : NetworkBehaviour
     public BackpackData backpackData;
 
     public readonly SyncList<InventoryItem> items = new SyncList<InventoryItem>();
-    public event System.Action OnInventoryChanged;
 
-    void Awake()
-    {
-        items.Callback += OnItemsChanged;
-    }
+    public event System.Action OnInventoryChanged; // 背包物品改变时调用
 
     void Start()
     {
-        BackpackManage.Instance.GetCom();
+        items.Callback += (op, index, oldItem, newItem) => OnInventoryChanged?.Invoke();
+
+        BackpackManage.Instance.GetComponent();
     }
 
-    void OnItemsChanged(SyncList<InventoryItem>.Operation op, int index, InventoryItem oldItem, InventoryItem newItem)
-    {
-        OnInventoryChanged?.Invoke();
-    }
-
-    public void AddItem(ItemData item, int amount)
+    #region 主方法（区分服务器、客户端来调用真正实现逻辑的方法）
+    public void AddItem(ItemData item, int amount) // 添加物品
     {
         if (amount <= 0) return;
 
-        if (isServer)
+        if (isServer) 
+        {
             AddItemInternal(item, amount);
-        else if (isClientOnly)
+        }
+        else 
+        {
             CmdAddItem(item.id, amount);
-        else
-            AddItemInternal(item, amount);
+        }
+
+        BackpackManage.Instance.UpdateBackpack();
     }
 
-    public void RemoveItem(InventoryItem item)
+    public void RemoveItem(InventoryItem item) // 移除物品(丢弃背包外)
     {
-        if (isServer)
-            RemoveItemInternal(item);
-        else if (isClientOnly)
+        if (isServer) RemoveItemInternal(item);
+        else 
         {
             int index = items.IndexOf(item);
-            if (index >= 0)
-                CmdRemoveItem(index);
+            if (index >= 0) CmdRemoveItem(index);
         }
-        else
-            RemoveItemInternal(item);
+
     }
 
-    public void MoveItem(InventoryItem item, string newGridType, int newGridIndex, int newX, int newY, bool newRotated)
+    public void MoveItem(InventoryItem item, string newGridType, int newGridIndex, int newX, int newY, bool newRotated) // 移动物品
     {
         if (isServer)
+        { 
             MoveItemInternal(item, newGridType, newGridIndex, newX, newY, newRotated);
-        else if (isClientOnly)
+        }
+        else
         {
             int index = items.IndexOf(item);
             if (index >= 0)
                 CmdMoveItem(index, newGridType, newGridIndex, newX, newY, newRotated);
         }
-        else
-            MoveItemInternal(item, newGridType, newGridIndex, newX, newY, newRotated);
+
+        BackpackManage.Instance.UpdateBackpack();
     }
 
-    public void UseItem(InventoryItem item, Player user)
+    public void UseItem(InventoryItem item, Player user) // 使用物品
     {
-        if (isServer)
-            UseItemInternal(item, user);
-        else if (isClientOnly)
+        if (isServer) UseItemInternal(item, user);
+        else
         {
             int index = items.IndexOf(item);
-            if (index >= 0)
-                CmdUseItem(index);
+            if (index >= 0) CmdUseItem(index);
         }
-        else
-            UseItemInternal(item, user);
-    }
 
+    }
+    #endregion
+
+    #region 实际逻辑实现方法
     [Server]
     private void AddItemInternal(ItemData item, int amount)
     {
-        if (item.isStackable)
+        // 不可堆叠，添加n个等于新建n个同样物品
+        if (!item.isStackable)
         {
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; i < amount; i++)
             {
-                InventoryItem invItem = items[i];
-                if (invItem.itemId == item.id)
+                if (FindEmptySlot(item.width, item.height, out string gridType, out int gridIndex, out int x, out int y))
                 {
-                    int canAdd = item.maxStack - invItem.amount;
-                    if (canAdd > 0)
-                    {
-                        int add = Mathf.Min(canAdd, amount);
-                        invItem.amount += add;
-                        amount -= add;
-                        items[i] = invItem;
-                        if (amount <= 0) return;
-                    }
+                    InventoryItem newItem = new InventoryItem(item.id, 1, x, y, gridType, gridIndex, false);
+                    items.Add(newItem);
+                }
+                else break;
+            }
+            return; // 直接结束，避免进入堆叠逻辑
+        }
+
+
+        //可堆叠：1. 先遍历所有已有物品，先加满未满一组（最大堆叠数）的物品格子 2.加满一组后剩下的数量再新建物品，依次循环
+        for (int i = 0; i < items.Count && amount > 0; i++)
+        {
+            InventoryItem invItem = items[i];
+
+            // ID相同、没满一组的格子
+            if (invItem.itemId == item.id && invItem.amount < item.maxStack)
+            {
+                int canAdd = item.maxStack - invItem.amount; // 可加数量  物品最大堆叠数 - 已有数量
+
+                if (canAdd > 0)
+                {
+                    int add = Mathf.Min(canAdd, amount);
+
+                    // 修改数量
+                    invItem.amount += add;
+                    amount -= add;
+
+                    // Struct 不能直接修改，必须 移除 → 修改 → 加回去
+                    items.RemoveAt(i);
+                    items.Insert(i, invItem);
+
+                    // 加满了就退出
+                    if (amount <= 0) return;
                 }
             }
         }
 
+        // 还有剩余数量，新建格子
         if (amount > 0)
         {
-            if (FindEmptySlot(item.width, item.height, out string gridType, out int gridIndex, out int x, out int y))
+            while (amount > 0)
             {
-                InventoryItem newItem = new InventoryItem(item.id, amount, x, y, gridType, gridIndex, false);
-                items.Add(newItem);
-            }
-            else
-            {
-                Debug.Log($"背包已满，无法添加 {item.itemName} x{amount}");
+                int addAmount = Mathf.Min(item.maxStack, amount);
+
+                if (FindEmptySlot(item.width, item.height, out string gridType, out int gridIndex, out int x, out int y))
+                {
+                    InventoryItem newItem = new InventoryItem(item.id, addAmount, x, y, gridType, gridIndex, false);
+                    items.Add(newItem);
+                    amount -= addAmount;
+                }
+                else // 没有空位加了
+                {
+                    // 后续可加扩展：在邮箱领取、丢地上
+                    break;
+                }
             }
         }
     }
@@ -125,42 +153,69 @@ public class PlayerBackpack : NetworkBehaviour
     [Server]
     private void MoveItemInternal(InventoryItem item, string newGridType, int newGridIndex, int newX, int newY, bool newRotated)
     {
-        if (!CanPlaceItemAtInternal(item, newGridType, newGridIndex, newX, newY, newRotated))
-        {
-            Debug.Log("移动失败：目标位置被占用或超出边界");
-            return;
-        }
 
-        item.gridType = newGridType;
-        item.gridIndex = newGridIndex;
-        item.x = newX;
-        item.y = newY;
-        item.isRotated = newRotated;
+        items.Remove(item); // Struct 不能直接修改，必须 移除 → 修改 → 加回去
 
-        int idx = items.IndexOf(item);
-        if (idx >= 0)
-            items[idx] = item;
+        InventoryItem newItem = item;
+        newItem.gridType = newGridType;
+        newItem.gridIndex = newGridIndex;
+        newItem.x = newX;
+        newItem.y = newY;
+        newItem.isRotated = newRotated;
+
+        items.Add(newItem);
     }
 
     [Server]
-    private void UseItemInternal(InventoryItem item, Player user)
+    private void UseItemInternal(InventoryItem item, Player user) // 使用物品
     {
-        item.item.Use(user);
+        item.item.Use(user);//物品作用方法（数据驱动中、共用）
 
-        if (item.amount > 1)
+        int index = items.IndexOf(item);
+
+        if (item.amount > 1) // 物品数量大于1时使用便减1
         {
-            int index = items.IndexOf(item);
-            item.amount--;
-            items[index] = item;
+            InventoryItem newItem = item;
+            newItem.amount--;
+
+            items.RemoveAt(index); // Struct 不能直接修改，必须 移除 → 修改 → 加回去
+            items.Insert(index, newItem);
         }
-        else
-        {
-            items.Remove(item);
-        }
+            else items.Remove(item); // 物品数量为1时使用便删除
     }
 
-    [Server]
-    private bool FindEmptySlot(int width, int height, out string gridType, out int gridIndex, out int x, out int y)
+
+
+    // 客户端调用
+    [Command]
+    public void CmdAddItem(int itemId, int amount)
+    {
+        ItemData item = BackpackManage.GetItemData(itemId);
+        if (item != null) AddItemInternal(item, amount);
+    }
+
+    [Command]
+    private void CmdRemoveItem(int itemIndex)
+    {
+        if (itemIndex >= 0 && itemIndex < items.Count) RemoveItemInternal(items[itemIndex]);
+    }
+
+    [Command]
+    private void CmdMoveItem(int itemIndex, string newGridType, int newGridIndex, int newX, int newY, bool newRotated)
+    {
+        if (itemIndex >= 0 && itemIndex < items.Count) MoveItemInternal(items[itemIndex], newGridType, newGridIndex, newX, newY, newRotated);
+    }
+
+    [Command]
+    private void CmdUseItem(int itemIndex)
+    {
+        if (itemIndex >= 0 && itemIndex < items.Count) UseItemInternal(items[itemIndex], GetComponent<Player>());
+    }
+    #endregion
+
+
+    #region 辅助方法
+    private bool FindEmptySlot(int width, int height, out string gridType, out int gridIndex, out int x, out int y) // 查找空位
     {
         if (TryFindInGridType("Small", width, height, out gridIndex, out x, out y))
         { gridType = "Small"; return true; }
@@ -169,13 +224,9 @@ public class PlayerBackpack : NetworkBehaviour
         if (TryFindInGridType("Large", width, height, out gridIndex, out x, out y))
         { gridType = "Large"; return true; }
 
-        gridType = "";
-        gridIndex = -1;
-        x = y = -1;
-        return false;
+        gridType = ""; gridIndex = -1; x = y = -1; return false;
     }
 
-    [Server]
     private bool TryFindInGridType(string gridType, int width, int height, out int gridIndex, out int x, out int y)
     {
         int count = gridType switch
@@ -185,23 +236,20 @@ public class PlayerBackpack : NetworkBehaviour
             "Large" => backpackData.largeCount,
             _ => 0
         };
-        Vector2Int size = GetGridSize(gridType, 0);
+        Vector2Int size = GetGridSize(gridType);
 
         for (int idx = 0; idx < count; idx++)
         {
             for (int yy = 0; yy <= size.y - height; yy++)
                 for (int xx = 0; xx <= size.x - width; xx++)
                     if (!IsPositionOccupied(gridType, idx, xx, yy, width, height))
-                    {
-                        gridIndex = idx; x = xx; y = yy; return true;
-                    }
+                    { gridIndex = idx; x = xx; y = yy; return true; }
         }
 
         gridIndex = -1; x = y = -1; return false;
     }
 
-    [Server]
-    private bool IsPositionOccupied(string gridType, int gridIndex, int x, int y, int width, int height)
+    private bool IsPositionOccupied(string gridType, int gridIndex, int x, int y, int width, int height) // 判断格子是否被占用
     {
         foreach (var item in items)
         {
@@ -216,32 +264,7 @@ public class PlayerBackpack : NetworkBehaviour
         return false;
     }
 
-    [Server]
-    private bool CanPlaceItemAtInternal(InventoryItem item, string gridType, int gridIndex, int x, int y, bool rotated)
-    {
-        int width = rotated ? item.item.height : item.item.width;
-        int height = rotated ? item.item.width : item.item.height;
-        Vector2Int size = GetGridSize(gridType, gridIndex);
-
-        if (x < 0 || y < 0 || x + width > size.x || y + height > size.y)
-            return false;
-
-        foreach (var existing in items)
-        {
-            if (existing.Equals(item)) continue;
-            if (existing.gridType == gridType && existing.gridIndex == gridIndex)
-            {
-                int ew = existing.Width;
-                int eh = existing.Height;
-                if (x < existing.x + ew && x + width > existing.x && y < existing.y + eh && y + height > existing.y)
-                    return false;
-            }
-        }
-        return true;
-    }
-
-    [Server]
-    private Vector2Int GetGridSize(string gridType, int gridIndex)
+    private Vector2Int GetGridSize(string gridType)
     {
         return gridType switch
         {
@@ -251,33 +274,5 @@ public class PlayerBackpack : NetworkBehaviour
             _ => Vector2Int.zero
         };
     }
-
-    [Command]
-    public void CmdAddItem(int itemId, int amount)
-    {
-        ItemData item = BackpackManage.GetItemData(itemId);
-        if (item != null)
-            AddItemInternal(item, amount);
-    }
-
-    [Command]
-    private void CmdRemoveItem(int itemIndex)
-    {
-        if (itemIndex >= 0 && itemIndex < items.Count)
-            RemoveItemInternal(items[itemIndex]);
-    }
-
-    [Command]
-    private void CmdMoveItem(int itemIndex, string newGridType, int newGridIndex, int newX, int newY, bool newRotated)
-    {
-        if (itemIndex >= 0 && itemIndex < items.Count)
-            MoveItemInternal(items[itemIndex], newGridType, newGridIndex, newX, newY, newRotated);
-    }
-
-    [Command]
-    private void CmdUseItem(int itemIndex)
-    {
-        if (itemIndex >= 0 && itemIndex < items.Count)
-            UseItemInternal(items[itemIndex], GetComponent<Player>());
-    }
+    #endregion
 }

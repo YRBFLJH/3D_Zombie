@@ -1,33 +1,50 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
+using Mirror;
+using Mirror.BouncyCastle.Crypto.Utilities;
 
-public class BulletController : MonoBehaviour
+public class BulletController : NetworkBehaviour
 {
     public BulletData bulletData;
     private Rigidbody rb;
-    private Vector3 shootDirection;
 
-    public void SetShootDirection(Vector3 dir)
+    float damage; 
+
+    void Update()
     {
-        shootDirection = dir;
-
-        transform.rotation = Quaternion.LookRotation(shootDirection) * Quaternion.Euler(90, 0, 0);
+        
     }
-   
 
     void Awake()
     {
         rb = GetComponent<Rigidbody>();
     }
 
-    void Start()
+    // 仅服务器调用：初始化子弹
+    [Server]
+    public void InitBullet(Vector3 dir,float damage)
     {
-        Destroy(gameObject, bulletData.lifeTime);
+        rb.velocity = dir * bulletData.speed;
+
+        this.damage = damage;
+        
+        // 服务器定时销毁
+        StartCoroutine(DestroyAfter(bulletData.lifeTime));
     }
 
-    void Update()
+    IEnumerator DestroyAfter(float delay)
     {
-        rb.velocity = shootDirection * bulletData.speed;
+        yield return new WaitForSeconds(delay);
+        if (gameObject != null && isServer)
+            NetworkServer.Destroy(gameObject);
+    }
+
+    [ServerCallback]
+    void OnTriggerEnter(Collider other)
+    {
+        if (other.tag != "Enemy") return;
+
+        Enemy_Controller enemy = other.GetComponentInParent<Enemy_Controller>();
+        enemy.TakeDamage(damage);
     }
 }

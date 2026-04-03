@@ -32,7 +32,7 @@ public class SaveGameData
 public class PlayerSaveData // 玩家数据
 {
     public String playerName;
-    public float speed,health,maxHealth,experience,maxExperience;
+    public float speed,health,maxHealth,satiety,maxSatiety,thirst,maxThirst;
     public int level,gold;
     public Vector3Data position; //Vector3不能直接序列号，需自定义
 }

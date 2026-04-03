@@ -14,16 +14,13 @@ public class BackpackData : ItemData
     public int middleCount;
     public int largeCount;
 
-    // 背包格子配置(每个区域里的格子数量、区域几行几列)
-    public int slotsInLarge;
+    // 背包格子配置(每个区域几行几列)
     public int largeWidth;
     public int largeHeight;
 
-    public int slotsInMiddle;
     public int middleWidth;
     public int middleHeight;
 
-    public int slotsInSmall;
     public int smallWidth;
     public int smallHeight;
 

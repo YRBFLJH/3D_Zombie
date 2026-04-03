@@ -16,7 +16,7 @@ MonoBehaviour:
   gunIcon: {fileID: 0}
   bulletPrefab: {fileID: 9116193038523873474, guid: a95a7e8cb898b7e43ae3ee1c64245225, type: 3}
   isAutomatic: 1
-  damage: 0
+  damage: 10
   fireRate: 0.18
   range: 0
   shootMagazineSize: 30

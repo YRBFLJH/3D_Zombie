@@ -68,7 +68,6 @@ public class ShowMetaAndLoad : MonoBehaviour
 
                 // 背包数据
                 BackpackManage.Instance.LoadInventory(data.inventory);
-                Debug.Log($"加载的背包物品数量: {data.inventory?.items.Count ?? 0}");
 
                 Debug.Log("加载成功");
             }

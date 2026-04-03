@@ -7,15 +7,14 @@ using Mirror;
 
 public class Player : NetworkBehaviour
 {
+    public static Player Instance;
     public bool isArmed;
 
     [HideInInspector]
     public CharacterController characterController;
 
+    Player_Getcomponent playerGetcomponent;
 
-    // 属性数值
-    [HideInInspector]
-    public float speed,health,maxHealth,experience,maxExperience;
 
     [HideInInspector]
     public int level,gold;
@@ -25,9 +24,14 @@ public class Player : NetworkBehaviour
 
     void Awake()
     {        
-        characterController = GetComponent<CharacterController>();
+        Instance = this;
+        playerGetcomponent = GetComponent<Player_Getcomponent>();
     }
 
+    void Start()
+    {
+        characterController = playerGetcomponent.characterController;
+    }
 
     // 瞬移 (供外部调用:回档、技能)
     public void Teleportation(Vector3 endPosition)
@@ -36,4 +40,6 @@ public class Player : NetworkBehaviour
         transform.position = endPosition;
         characterController.enabled = true;
     }
+
+    
 }

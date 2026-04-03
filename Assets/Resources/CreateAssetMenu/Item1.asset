@@ -13,10 +13,10 @@ MonoBehaviour:
   m_Name: Item1
   m_EditorClassIdentifier: 
   itemName: "\u56DE\u84DD"
-  id: 1
+  id: 2
   icon: {fileID: 21300000, guid: 51576ee970765e1448f6cd45ad48ef5d, type: 3}
-  maxStack: 1
-  isStackable: 0
+  maxStack: 15
+  isStackable: 1
   width: 1
   height: 2
   weight: 0

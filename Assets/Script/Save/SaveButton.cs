@@ -8,6 +8,8 @@ using Mirror;
 public class SaveButton : MonoBehaviour
 {
     Player localPlayer;
+    Player_State localPlayerState;
+    Player_Move localPlayerMove;
     Button button;
 
     SaveGameData allSaveData;
@@ -16,6 +18,8 @@ public class SaveButton : MonoBehaviour
     void Start()
     {
         localPlayer = NetworkClient.localPlayer.GetComponent<Player>();
+        localPlayerState = NetworkClient.localPlayer.GetComponent<Player_State>();
+        localPlayerMove = NetworkClient.localPlayer.GetComponent<Player_Move>();
 
         button = GetComponent<Button>();
         button.onClick.AddListener(Save);
@@ -59,11 +63,13 @@ public class SaveButton : MonoBehaviour
         playerName = localPlayer.playerName,
         level = localPlayer.level,
         gold = localPlayer.gold,
-        health = localPlayer.health,
-        maxHealth = localPlayer.maxHealth,
-        experience = localPlayer.experience,
-        maxExperience = localPlayer.maxExperience,
-        speed = localPlayer.speed,
+        health = localPlayerState.health,
+        maxHealth = localPlayerState.maxHealth,
+        satiety = localPlayerState.satiety,
+        maxSatiety = localPlayerState.maxSatiety,
+        thirst = localPlayerState.thirst,
+        maxThirst = localPlayerState.maxThirst,
+        speed = localPlayerMove.speed,
         };
         allSaveData.player = playerSaveData; 
 
@@ -71,7 +77,6 @@ public class SaveButton : MonoBehaviour
 
         // 背包数据
         allSaveData.inventory = BackpackManage.Instance.GetSaveData();
-        Debug.Log($"保存时背包物品数量: {BackpackManage.Instance.GetSaveData().items.Count}");
     }
 
 }

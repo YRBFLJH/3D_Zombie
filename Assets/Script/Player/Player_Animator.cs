@@ -3,97 +3,93 @@ using System.Collections.Generic;
 using UnityEngine;
 using Mirror;
 
-//动作种类
-public enum PlayerAnimationState
-{
-    Idle,
-    Walk,
-    Run,
-    Armed,
-    Aim,
-    EndAim,
-    ReLoad,
-    Injured
-}
-
 public class Player_Animator : NetworkBehaviour
 {
-    public Transform crosshair; //准星位置
+    private NetworkAnimator netAnimator;
+    private Animator anim;
 
-    private Animator animator;
-
-    //Hash比字符串更快性能更好
     private readonly int idleHash = Animator.StringToHash("isIdle");
     private readonly int movingHash = Animator.StringToHash("isMoving");
     private readonly int runningHash = Animator.StringToHash("isRunning");
     private readonly int armedHash = Animator.StringToHash("isArmed");
     private readonly int aimHash = Animator.StringToHash("isAim");
 
-
     private float ik_AllWeight;
     private float ik_BodyWeight;
     private float ik_HeadWeight;
     private float ik_EyeWeight;
 
+    [SyncVar] private Vector3 syncLookAtPosition;  // 同步的注视位置（世界坐标）
+
     public float cameraRightOffset;
 
     void Awake()
     {
-        animator = GetComponent<Animator>();
+        netAnimator = GetComponent<NetworkAnimator>();
+        anim = netAnimator.animator;
     }
 
-    public void PlayIdle(bool isIdle)
+    void Update()
     {
-        animator.SetBool(idleHash, isIdle);
+        if (!isLocalPlayer) return;
+
+        // 本地玩家计算自己当前的注视目标点（例如摄像机前方 4 米处 + 右侧偏移）
+        Vector3 localLookAt = Camera.main.transform.position 
+                              + Camera.main.transform.forward * 4f 
+                              + Camera.main.transform.right * cameraRightOffset;
+
+        // 通过命令将目标点发送给服务器（可以增加角度变化阈值优化性能）
+        CmdUpdateLookAt(localLookAt);
     }
 
-    public void PlayerMove(bool isMoving)
+    [Command]
+    void CmdUpdateLookAt(Vector3 lookPos)
     {
-        animator.SetBool(movingHash, isMoving);
+        // 服务器收到后设置同步变量，会广播给所有客户端
+        syncLookAtPosition = lookPos;
     }
 
-    public void PlayerRun(bool isRunning)
+    void OnAnimatorIK(int layerIndex)
     {
-        animator.SetBool(runningHash, isRunning);
-    }
+        // 所有玩家（包括本地）都使用同步到的目标点
+        // 对于本地玩家，syncLookAtPosition 会很快被自己的 Update 更新，所以效果一致
+        Vector3 targetPos = syncLookAtPosition;
 
-    public void PlayArmed(bool isArmed)
-    {
-        animator.SetBool(armedHash, isArmed);
-    }
+        // 防止目标点未初始化时出现异常（例如刚生成时）
+        if (targetPos == Vector3.zero)
+            targetPos = transform.position + transform.forward * 4f;
 
-    public void PlayAim(bool isAiming)
-    {
-        animator.SetBool(aimHash, isAiming);
-    }
-
-    public void PlayReload()
-    {
-        animator.SetTrigger("canReload");
-    }
-    
-
-    void OnAnimatorIK(int layerIndex) //动画IK
-    {
-        if(layerIndex == 0) //只在基础层设置IK
+        // 根据层设置权重（保持你的逻辑）
+        if (layerIndex == 0)
         {
             ik_AllWeight = 0.8f;
             ik_BodyWeight = 0.1f;
             ik_HeadWeight = 0.1f;
             ik_EyeWeight = 0.1f;
         }
-        else if(layerIndex == 1)
+        else if (layerIndex == 1)
         {
-            ik_AllWeight = 1;
+            ik_AllWeight = 1f;
             ik_BodyWeight = 0.9f;
             ik_HeadWeight = 0.45f;
             ik_EyeWeight = 0.3f;
         }
 
-
-        animator.SetLookAtWeight(ik_AllWeight, ik_BodyWeight, ik_HeadWeight, ik_EyeWeight); //设置权重(参数按顺序：总的、身体、头部、眼睛的权重)
-        animator.SetLookAtPosition(Camera.main.transform.position + Camera.main.transform.forward * 4f + Camera.main.transform.right * cameraRightOffset); //设置IK目标位置（这里设置为摄像机前方一定距离的位置，可以根据需要调整）
+        anim.SetLookAtWeight(ik_AllWeight, ik_BodyWeight, ik_HeadWeight, ik_EyeWeight);
+        anim.SetLookAtPosition(targetPos);
     }
 
-  
+    // 下面的动画状态同步方法保持不变
+    public void PlayIdle(bool isIdle) => CmdSetBool(idleHash, isIdle);
+    public void PlayMove(bool isMoving) => CmdSetBool(movingHash, isMoving);
+    public void PlayRun(bool isRunning) => CmdSetBool(runningHash, isRunning);
+    public void PlayArmed(bool isArmed) => CmdSetBool(armedHash, isArmed);
+    public void PlayAim(bool isAiming) => CmdSetBool(aimHash, isAiming);
+    public void PlayReload() => CmdPlayReload();
+
+    [Command] void CmdSetBool(int hash, bool value) => RpcSetBool(hash, value);
+    [ClientRpc] void RpcSetBool(int hash, bool value) => anim.SetBool(hash, value);
+
+    [Command] void CmdPlayReload() => RpcPlayReload();
+    [ClientRpc] void RpcPlayReload() => anim.SetTrigger("canReload");
 }

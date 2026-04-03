@@ -6,7 +6,8 @@ using Mirror;
 
 public class Player_Move : NetworkBehaviour
 {
-    Player localPlayer;
+    Player_Getcomponent playercomponent;
+    Player Player;
 
 
     //X轴Y轴灵敏度
@@ -17,13 +18,13 @@ public class Player_Move : NetworkBehaviour
     private float rotationX = 0f; 
     private float rotationY = 0f;  
 
-    public Transform visualCameraFllow; //让摄像机能在玩家站立时旋转角度
-    public Transform playerCamera;
+    public Transform virtualCameraFllow; //让摄像机能在玩家站立时旋转角度
+    Transform virtualCamera;
 
 
     private bool running;
-    private float moveSpeed => localPlayer.speed;
-    private float speed; //同步修改好的moveSpeed并根据奔跑状态切换
+    float playerSpeed;
+    public float speed; //同步修改好的playerSpeed并根据奔跑状态切换
     private CharacterController characterController;
 
     // 角色旋转的灵敏度
@@ -42,33 +43,40 @@ public class Player_Move : NetworkBehaviour
     float playerForwardY;
     float yoffset;
 
+    float gravity = -9.8f;
+    float verticalVelocity;
+
 
     void Awake()
     {
-        characterController = GetComponent<CharacterController>();
-        playerAnimator = GetComponent<Player_Animator>();
-        playerShoot = GetComponent<Player_Shoot>();
+        playercomponent = GetComponent<Player_Getcomponent>();
     }
 
     void Start()
-    {
+    {   
+        if (!isLocalPlayer) return;
+
+        Player = playercomponent.playerCS;
+        playerAnimator = playercomponent.playerAnimatorCS;
+        characterController = playercomponent.characterController;
+        playerShoot = playercomponent.playerShootCS;
+
+        virtualCamera = playercomponent.virtualCamera.transform;
+
         // Cursor.lockState = CursorLockMode.Locked;
         // Cursor.visible = false;
 
-        localPlayer = NetworkClient.localPlayer.GetComponent<Player>();
-
-        localPlayer.speed = 3f;
+        playerSpeed = 3f;
     }
 
-    void Update()
-    {
-        // if (!isLocalPlayer) return;
+    void Update() 
+    {   
         Move();
     }
 
     void Move()
     {
-        
+        if (!isLocalPlayer) return;
 
         //摄像机视角
         float mouseX = Input.GetAxis("Mouse X") * rotationSpeedY;
@@ -80,7 +88,7 @@ public class Player_Move : NetworkBehaviour
     
         rotationX = Mathf.Clamp(rotationX, -45f, 45f);
 
-        if (playerShoot.isAiming)
+        if (playerShoot.isAiming)  // 瞄准时视角变化
         {
             playerForwardY = transform.eulerAngles.y;
             yoffset = Mathf.DeltaAngle(playerForwardY,rotationY);
@@ -93,50 +101,65 @@ public class Player_Move : NetworkBehaviour
         }
     
         // 旋转摄像机跟随的点从而旋转摄像机
-        visualCameraFllow.rotation = Quaternion.Euler(rotationX, rotationY, 0f);
+        virtualCameraFllow.rotation = Quaternion.Euler(rotationX, rotationY, 0f);
 
 
         //移动
-        speed = running ? moveSpeed + 10 : moveSpeed;
+        speed = running ? playerSpeed + 5.5f : playerSpeed;
 
         float horizontal = Input.GetAxis("Horizontal");
         float vertical = Input.GetAxis("Vertical");
 
         // 构建基于摄像机朝向的移动方向（只取水平方向，消除Y轴影响）
-        cameraForward = playerCamera.forward;
-        cameraRight = playerCamera.right;
+        cameraForward = virtualCamera.forward;
+        cameraRight = virtualCamera.right;
         cameraForward.y = 0;
         cameraRight.y = 0;
         cameraForward.Normalize();
         cameraRight.Normalize();
 
+        if (characterController.isGrounded)
+        {
+            //  grounded 时重置下落速度
+            verticalVelocity = -0.5f;
+        }
+        else
+        {
+            // 空中自由落体下落
+            verticalVelocity += gravity * Time.deltaTime;
+        }
+
+
         moveDir = cameraRight * horizontal + cameraForward * vertical;
         moveDir.Normalize();
+
+        Vector3 moveWithGravity = moveDir * speed;
+        moveWithGravity.y = verticalVelocity;
 
         if (moveDir.magnitude > 0.1f) // 避免微小输入导致的异常
         {
             playerAnimator.PlayIdle(false);
 
-            characterController.Move(moveDir * speed * Time.deltaTime);
+            characterController.Move(moveWithGravity * Time.deltaTime);
 
             //移动动画
             if (Input.GetKey(KeyCode.LeftShift) && !playerShoot.isAiming)
             {
-                playerAnimator.PlayerMove(false);
-                playerAnimator.PlayerRun(true);
+                playerAnimator.PlayMove(false);
+                playerAnimator.PlayRun(true);
                 running = true;
             }
             else
             {
-                playerAnimator.PlayerRun(false);
-                playerAnimator.PlayerMove(true);
+                playerAnimator.PlayRun(false);
+                playerAnimator.PlayMove(true);
                 running = false;
             }
         }
         else
         {
-            playerAnimator.PlayerMove(false);
-            playerAnimator.PlayerRun(false);
+            playerAnimator.PlayMove(false);
+            playerAnimator.PlayRun(false);
 
             characterController.Move(Vector3.zero);
             playerAnimator.PlayIdle(true);

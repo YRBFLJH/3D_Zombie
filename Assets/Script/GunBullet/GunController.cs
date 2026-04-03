@@ -1,124 +1,87 @@
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
-using UnityEngine.SocialPlatforms;
 using Mirror;
+using UnityEngine;
 
-public class GunController : MonoBehaviour
+public class GunController : NetworkBehaviour
 {
-    Player localPlayer;
+    [HideInInspector]
+    [SyncVar] public uint ownerNetId; // uint:int的0 ~ 正整数
+
+    [HideInInspector]
+    public Player ownPlayer;
 
     public GunData gunData;
-
     public Transform firePoint;
 
-
-    private int currentBulletsInMag; //弹夹剩余子弹
-    private int allBullets; //总子弹数量
-
-    private bool isReloading;
-    private GameObject bulletPrefab;
-    private GameObject bullet;
-
-    private Transform crosshair;
-
     private Player_Shoot playerShoot;
-
-    private float lastShootTime;
-    private float shootRate => gunData.fireRate;
-
-
-    void  Awake()
-    {
-        playerShoot = localPlayer.GetComponent<Player_Shoot>();
-    }
-
+    private Player_Animator playerAnimator;
 
     void Start()
     {
-        localPlayer = NetworkClient.localPlayer.GetComponent<Player>();
-
-        currentBulletsInMag = gunData.shootMagazineSize;
-        allBullets = gunData.allMagazineSize;
-
-
-        bulletPrefab = gunData.bulletPrefab;
-        isReloading = false;
-
-        crosshair = localPlayer.GetComponent<Player_Shoot>().crosshair;
-
-    }
-
-    void Update()
-    {
-        if(Input.GetMouseButton(0) && !isReloading && Time.time >= lastShootTime + shootRate && playerShoot.isAiming) //左键射击
+        if (isClient && ownPlayer == null && ownerNetId != 0)
         {
-            if(currentBulletsInMag > 0)
-            {
-                Shoot();
-                lastShootTime = Time.time;
-
-            }
-            // else
-            // {
-            //     //播放空弹音效
-            //     AudioSource.PlayClipAtPoint(gunData.emptySound, transform.position);
-            // }
+            BindToOwner();
         }
 
-        if(Input.GetKeyDown(KeyCode.R) && !isReloading && localPlayer.isArmed) //按R换弹
+        if (isServer && ownPlayer != null)
         {
-            if(currentBulletsInMag < gunData.shootMagazineSize)
-            {
-                isReloading = true;
-                playerShoot.Reload();
-            }
+            Setup(ownPlayer);
         }
 
-        BulletAmoutInstance.instance.UpdateBulletAmount(currentBulletsInMag, allBullets);
+        if (isClient && transform.parent == null) BindToOwner(); // 防止客户端后进来的不同步现象
     }
 
-    void Shoot()
+    void BindToOwner()
     {
-        Ray ray = Camera.main.ScreenPointToRay(crosshair.position);
-
-        SpawnBullet();
-        
-        bullet.GetComponent<BulletController>().SetShootDirection(ray.direction);
-
-        //减少弹夹中的子弹数量
-        currentBulletsInMag--;
+        GameObject owner = NetworkClient.spawned[ownerNetId]?.gameObject;
+        if (owner != null)
+        {
+            ownPlayer = owner.GetComponent<Player>();
+            Transform spawnPoint = owner.GetComponent<Player_Getcomponent>().ItemSpawnPoint;
+            transform.SetParent(spawnPoint, false);
+            Setup(ownPlayer);
+        }
+        else
+        {
+            // 可能玩家对象还未生成，延迟绑定（如刚进游戏就是拿着枪（存档））
+            Invoke(nameof(BindToOwner), 0.2f);
+        }
     }
 
-    void SpawnBullet()
+    public void Setup(Player player)
     {
-        bullet = Instantiate(bulletPrefab, firePoint.position, firePoint.rotation);
-    }
+        ownPlayer = player;
+        playerShoot = ownPlayer.GetComponent<Player_Shoot>();
+        playerAnimator = ownPlayer.GetComponent<Player_Animator>();
 
-    void OnEnable() 
-    {
-        BulletAmoutInstance.instance.All.SetActive(true);
-        playerShoot.canShoot = true;
-        lastShootTime = -shootRate; // 允许立即射击
         playerShoot.SetCurrentGun(this);
+        UpdateState();
+        playerShoot.ShowHideBulletUI();
+
+        if (playerShoot.rightBullet > 0 && playerShoot.leftBullet < gunData.shootMagazineSize)
+            playerShoot.Reload();
     }
 
-    void OnDisable() 
+    void OnEnable()
     {
-        if (BulletAmoutInstance.instance != null)
-            BulletAmoutInstance.instance.All.SetActive(false);
-        if (playerShoot != null)
-        {
-            playerShoot.canShoot = false;
-            playerShoot.SetCurrentGun(null);
-        }
+        if (ownPlayer == null) return;
+        UpdateState();
+        playerShoot.ShowHideBulletUI();
+
+        if (playerShoot.rightBullet > 0 && playerShoot.leftBullet < gunData.shootMagazineSize)
+            playerShoot.Reload();
     }
 
-    public void FinishReload()
+    void OnDisable()
     {
-        allBullets -= gunData.shootMagazineSize - currentBulletsInMag;
-        currentBulletsInMag = gunData.shootMagazineSize;
-        isReloading = false;
+        if (ownPlayer == null) return;
+        UpdateState();
+        playerShoot.ShowHideBulletUI();
     }
 
+    void UpdateState()
+    {
+        if (ownPlayer == null || !ownPlayer.isLocalPlayer) return;
+        ownPlayer.isArmed = gameObject.activeSelf;
+        playerAnimator.PlayArmed(gameObject.activeSelf);
+    }
 }
