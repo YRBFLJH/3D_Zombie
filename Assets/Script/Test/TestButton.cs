@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Collections.Generic;
-using Mirror;
 using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.UI;
@@ -19,11 +18,17 @@ public class TestButton : MonoBehaviour
     
     void OnButtonClick()
     {
-        backpack = NetworkClient.localPlayer.GetComponent<PlayerBackpack>();
+        // 单机模式：通过查找标签获取本地玩家背包组件
+        GameObject playerObj = GameObject.FindWithTag("Player");
+        if (playerObj != null)
+            backpack = playerObj.GetComponent<PlayerBackpack>();
 
-        for (int i = 0; i < itemData.Length; i++)
+        if (backpack != null)
         {
-            backpack.AddItem(itemData[i], 5);
+            for (int i = 0; i < itemData.Length; i++)
+            {
+                backpack.AddItem(itemData[i], 5);
+            }
         }
     }
 }

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   itemName: 
   id: 3
-  icon: {fileID: 21300000, guid: 1a1da36a104725048b8d2388fb8d321d, type: 3}
+  icon: {fileID: 21300000, guid: d24ce98bd2c9e3d479cb9d943afc42ba, type: 3}
   maxStack: 1
   isStackable: 0
   width: 1

@@ -15,7 +15,7 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
     public Image highlightImage;
     GridLayoutGroup grid;
     RectTransform iconRect;
-    RectTransform dragRect;
+    public RectTransform dragRect;
     Image selfImage;
 
 
@@ -28,7 +28,13 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
     [HideInInspector]
     public Action<Slot> onSlotRightClick; // 右击格子事件委托
 
-    float cellWidth, cellHeight;    // 格子宽高，调用GridLayoutGroup中的cellSize
+    public float cellWidth, cellHeight;    // 格子宽高，调用GridLayoutGroup中的cellSize
+
+    // 外部可覆盖的事件（用于箱子）
+    public Action<Slot, PointerEventData> onLeftClick;
+    public Action<Slot, PointerEventData> onBeginDragExternal;
+    public Action<Slot, PointerEventData> onDragExternal;
+    public Action<Slot, PointerEventData> onEndDragExternal;
 
     void Awake()
     {
@@ -98,9 +104,11 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
 
     public void OnPointerClick(PointerEventData eventData)
     {
-        if (eventData.button == PointerEventData.InputButton.Left) // 左击选中格子
+        if (eventData.button == PointerEventData.InputButton.Left)
         {
-            if (occupiedBy.item != null)
+            if (onLeftClick != null)
+                onLeftClick(this, eventData);
+            else if (occupiedBy.item != null)
                 BackpackManage.Instance.SelectItem(occupiedBy);
             else
                 BackpackManage.Instance.SelectItem(new InventoryItem());
@@ -115,42 +123,57 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
     {
         if (occupiedBy.item == null) return; // 空白格子跳过
 
-        BackpackManage.Instance.StartDrag(occupiedBy); //对应BackpackManage.cs的拖拽
+        if (onBeginDragExternal != null)
+            onBeginDragExternal(this, eventData);
+        else
+        {
+            BackpackManage.Instance.StartDrag(occupiedBy); //对应BackpackManage.cs的拖拽
 
-        selfImage.raycastTarget = false;
+            selfImage.raycastTarget = false;
+        }
     }
 
     public void OnDrag(PointerEventData eventData)
     {
         if (occupiedBy.item == null) return; // 空白格子跳过
 
-        // 显示拖拽图标
-        dragFllowImage.gameObject.SetActive(true);
-        dragFllowImage.sprite = occupiedBy.item.icon;
-        dragFllowImage.transform.position = Input.mousePosition;
+        if (onDragExternal != null)
+            onDragExternal(this, eventData);
 
-        var target = BackpackManage.Instance.GetSlotUnderMouse(eventData);
-        float w = target != null ? target.cellWidth : cellWidth;
-        float h = target != null ? target.cellHeight : cellHeight;
+        else
+        {
+            // 显示拖拽图标
+            dragFllowImage.gameObject.SetActive(true);
+            dragFllowImage.sprite = occupiedBy.item.icon;
+            dragFllowImage.transform.position = Input.mousePosition;
 
-        dragRect.sizeDelta = new Vector2(occupiedBy.Width * w, occupiedBy.Height * h); // 拖拽图标的尺寸拉伸
+            var target = BackpackManage.Instance.GetSlotUnderMouse(eventData);
+            float w = target != null ? target.cellWidth : cellWidth;
+            float h = target != null ? target.cellHeight : cellHeight;
 
-        BackpackManage.Instance.OnDrag(occupiedBy, eventData); // 对应BackpackManage.cs的拖拽
+            dragRect.sizeDelta = new Vector2(occupiedBy.Width * w, occupiedBy.Height * h); // 拖拽图标的尺寸拉伸
 
-        Cursor.visible = false; // 隐藏鼠标
+            BackpackManage.Instance.OnDrag(occupiedBy, eventData); // 对应BackpackManage.cs的拖拽
+
+            Cursor.visible = false; // 隐藏鼠标
+        }
     }
 
     public void OnEndDrag(PointerEventData eventData)
     {
         if (occupiedBy.item == null) return; // 空白格子跳过
+        if (onEndDragExternal != null)
+            onEndDragExternal(this, eventData);
+        else
+        {
+            // 隐藏拖拽图标、恢复鼠标可见、清空选中格子
+            dragFllowImage.gameObject.SetActive(false);
+            BackpackManage.Instance.SelectItem(new InventoryItem());
+            Cursor.visible = true;
 
-        // 隐藏拖拽图标、恢复鼠标可见、清空选中格子
-        dragFllowImage.gameObject.SetActive(false);
-        BackpackManage.Instance.SelectItem(new InventoryItem());
-        Cursor.visible = true;
+            BackpackManage.Instance.EndDrag(occupiedBy, eventData); // 对应BackpackManage.cs的拖拽
 
-        BackpackManage.Instance.EndDrag(occupiedBy, eventData); // 对应BackpackManage.cs的拖拽
-
-        selfImage.raycastTarget = true;
+            selfImage.raycastTarget = true;
+        }
     }
 }

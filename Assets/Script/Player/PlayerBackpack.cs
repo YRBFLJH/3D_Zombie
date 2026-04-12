@@ -1,81 +1,47 @@
-using Mirror;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class PlayerBackpack : NetworkBehaviour
+public class PlayerBackpack : MonoBehaviour
 {
     [Header("背包配置")]
     public BackpackData backpackData;
 
-    public readonly SyncList<InventoryItem> items = new SyncList<InventoryItem>();
+    // 改为普通列表
+    public List<InventoryItem> items = new List<InventoryItem>();
 
     public event System.Action OnInventoryChanged; // 背包物品改变时调用
 
     void Start()
     {
-        items.Callback += (op, index, oldItem, newItem) => OnInventoryChanged?.Invoke();
-
-        BackpackManage.Instance.GetComponent();
+        BackpackManage.Instance.InitComponent();
     }
 
-    #region 主方法（区分服务器、客户端来调用真正实现逻辑的方法）
+    #region 主方法（直接实现逻辑，不再区分服务器客户端）
     public void AddItem(ItemData item, int amount) // 添加物品
     {
         if (amount <= 0) return;
-
-        if (isServer) 
-        {
-            AddItemInternal(item, amount);
-        }
-        else 
-        {
-            CmdAddItem(item.id, amount);
-        }
-
+        AddItemInternal(item, amount);
         BackpackManage.Instance.UpdateBackpack();
     }
 
     public void RemoveItem(InventoryItem item) // 移除物品(丢弃背包外)
     {
-        if (isServer) RemoveItemInternal(item);
-        else 
-        {
-            int index = items.IndexOf(item);
-            if (index >= 0) CmdRemoveItem(index);
-        }
-
+        RemoveItemInternal(item);
     }
 
     public void MoveItem(InventoryItem item, string newGridType, int newGridIndex, int newX, int newY, bool newRotated) // 移动物品
     {
-        if (isServer)
-        { 
-            MoveItemInternal(item, newGridType, newGridIndex, newX, newY, newRotated);
-        }
-        else
-        {
-            int index = items.IndexOf(item);
-            if (index >= 0)
-                CmdMoveItem(index, newGridType, newGridIndex, newX, newY, newRotated);
-        }
-
+        MoveItemInternal(item, newGridType, newGridIndex, newX, newY, newRotated);
         BackpackManage.Instance.UpdateBackpack();
     }
 
     public void UseItem(InventoryItem item, Player user) // 使用物品
     {
-        if (isServer) UseItemInternal(item, user);
-        else
-        {
-            int index = items.IndexOf(item);
-            if (index >= 0) CmdUseItem(index);
-        }
-
+        UseItemInternal(item, user);
     }
     #endregion
 
     #region 实际逻辑实现方法
-    [Server]
     private void AddItemInternal(ItemData item, int amount)
     {
         // 不可堆叠，添加n个等于新建n个同样物品
@@ -87,12 +53,12 @@ public class PlayerBackpack : NetworkBehaviour
                 {
                     InventoryItem newItem = new InventoryItem(item.id, 1, x, y, gridType, gridIndex, false);
                     items.Add(newItem);
+                    OnInventoryChanged?.Invoke();
                 }
                 else break;
             }
             return; // 直接结束，避免进入堆叠逻辑
         }
-
 
         //可堆叠：1. 先遍历所有已有物品，先加满未满一组（最大堆叠数）的物品格子 2.加满一组后剩下的数量再新建物品，依次循环
         for (int i = 0; i < items.Count && amount > 0; i++)
@@ -115,6 +81,7 @@ public class PlayerBackpack : NetworkBehaviour
                     // Struct 不能直接修改，必须 移除 → 修改 → 加回去
                     items.RemoveAt(i);
                     items.Insert(i, invItem);
+                    OnInventoryChanged?.Invoke();
 
                     // 加满了就退出
                     if (amount <= 0) return;
@@ -133,6 +100,7 @@ public class PlayerBackpack : NetworkBehaviour
                 {
                     InventoryItem newItem = new InventoryItem(item.id, addAmount, x, y, gridType, gridIndex, false);
                     items.Add(newItem);
+                    OnInventoryChanged?.Invoke();
                     amount -= addAmount;
                 }
                 else // 没有空位加了
@@ -144,16 +112,14 @@ public class PlayerBackpack : NetworkBehaviour
         }
     }
 
-    [Server]
     private void RemoveItemInternal(InventoryItem item)
     {
         items.Remove(item);
+        OnInventoryChanged?.Invoke();
     }
 
-    [Server]
     private void MoveItemInternal(InventoryItem item, string newGridType, int newGridIndex, int newX, int newY, bool newRotated)
     {
-
         items.Remove(item); // Struct 不能直接修改，必须 移除 → 修改 → 加回去
 
         InventoryItem newItem = item;
@@ -164,9 +130,9 @@ public class PlayerBackpack : NetworkBehaviour
         newItem.isRotated = newRotated;
 
         items.Add(newItem);
+        OnInventoryChanged?.Invoke();
     }
 
-    [Server]
     private void UseItemInternal(InventoryItem item, Player user) // 使用物品
     {
         item.item.Use(user);//物品作用方法（数据驱动中、共用）
@@ -180,39 +146,15 @@ public class PlayerBackpack : NetworkBehaviour
 
             items.RemoveAt(index); // Struct 不能直接修改，必须 移除 → 修改 → 加回去
             items.Insert(index, newItem);
+            OnInventoryChanged?.Invoke();
         }
-            else items.Remove(item); // 物品数量为1时使用便删除
-    }
-
-
-
-    // 客户端调用
-    [Command]
-    public void CmdAddItem(int itemId, int amount)
-    {
-        ItemData item = BackpackManage.GetItemData(itemId);
-        if (item != null) AddItemInternal(item, amount);
-    }
-
-    [Command]
-    private void CmdRemoveItem(int itemIndex)
-    {
-        if (itemIndex >= 0 && itemIndex < items.Count) RemoveItemInternal(items[itemIndex]);
-    }
-
-    [Command]
-    private void CmdMoveItem(int itemIndex, string newGridType, int newGridIndex, int newX, int newY, bool newRotated)
-    {
-        if (itemIndex >= 0 && itemIndex < items.Count) MoveItemInternal(items[itemIndex], newGridType, newGridIndex, newX, newY, newRotated);
-    }
-
-    [Command]
-    private void CmdUseItem(int itemIndex)
-    {
-        if (itemIndex >= 0 && itemIndex < items.Count) UseItemInternal(items[itemIndex], GetComponent<Player>());
+        else
+        {
+            items.Remove(item); // 物品数量为1时使用便删除
+            OnInventoryChanged?.Invoke();
+        }
     }
     #endregion
-
 
     #region 辅助方法
     private bool FindEmptySlot(int width, int height, out string gridType, out int gridIndex, out int x, out int y) // 查找空位
@@ -275,4 +217,19 @@ public class PlayerBackpack : NetworkBehaviour
         };
     }
     #endregion
+
+    //箱子调用
+    public void AddItemAtPosition(ItemData item, int amount, string gridType, int gridIndex, int x, int y, bool rotated)
+    {
+        if (amount <= 0) return;
+        AddItemAtPositionInternal(item, amount, gridType, gridIndex, x, y, rotated);
+        BackpackManage.Instance.UpdateBackpack();
+    }
+
+    private void AddItemAtPositionInternal(ItemData item, int amount, string gridType, int gridIndex, int x, int y, bool rotated)
+    {
+        InventoryItem newItem = new InventoryItem(item.id, amount, x, y, gridType, gridIndex, rotated);
+        items.Add(newItem);
+        OnInventoryChanged?.Invoke();
+    }
 }

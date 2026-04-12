@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Collections.Generic;
-using Mirror;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -22,17 +21,27 @@ public class ChangeState : MonoBehaviour
 
     public void Health()
     {
-        player = NetworkClient.localPlayer.GetComponent<Player_State>();
-        player.CmdReduceHealth(5);
+        // 单机模式：通过查找标签获取本地玩家组件
+        GameObject playerObj = GameObject.FindWithTag("Player");
+        if (playerObj != null)
+            player = playerObj.GetComponent<Player_State>();
+        if (player != null)
+            player.ReduceHealth(5);
     }
     public void Food()
     {
-        player = NetworkClient.localPlayer.GetComponent<Player_State>();
-        player.CmdAddSatiety(5);
+        GameObject playerObj = GameObject.FindWithTag("Player");
+        if (playerObj != null)
+            player = playerObj.GetComponent<Player_State>();
+        if (player != null)
+            player.AddSatiety(5);
     }
     public void Water()
     {
-        player = NetworkClient.localPlayer.GetComponent<Player_State>();
-        player.CmdAddThirst(5);
+        GameObject playerObj = GameObject.FindWithTag("Player");
+        if (playerObj != null)
+            player = playerObj.GetComponent<Player_State>();
+        if (player != null)
+            player.AddThirst(5);
     }
 }

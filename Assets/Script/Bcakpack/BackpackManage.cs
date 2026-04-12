@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Mirror;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -22,11 +21,15 @@ public class BackpackManage : MonoBehaviour
     public GameObject showBackpack; // 背包UI
 
     // 各区域内格子数组集合（知道区域内格子数量、序号）
-    List<Slot[,]> largeAreaGrids = new List<Slot[,]>();
-    List<Slot[,]> middleAreaGrids = new List<Slot[,]>();
-    List<Slot[,]> smallAreaGrids = new List<Slot[,]>();
+    [HideInInspector]
+    public List<Slot[,]> largeAreaGrids = new List<Slot[,]>();
+    [HideInInspector]
+    public List<Slot[,]> middleAreaGrids = new List<Slot[,]>();
+    [HideInInspector]
+    public List<Slot[,]> smallAreaGrids = new List<Slot[,]>();
 
-    private PlayerBackpack playerBackpack;
+    public PlayerBackpack playerBackpack;
+    Player_Move playerMove; // 控制鼠标显示
     private Player localPlayer;
 
     private InventoryItem currentSelectedItem;  // 当前选中物品
@@ -39,12 +42,21 @@ public class BackpackManage : MonoBehaviour
     private bool canPlaceAtHighlight;
     private Slot lastHightSlot; // 记录上一次可放置的高亮格子（防止闪烁）
 
-    private RectTransform areaRect;
+    [HideInInspector]
+    public RectTransform areaRect;
     private Vector2 lastMousePos;
 
     // 高亮检查间隔（防止每帧检测进行可忽略的没必要作用，性能优化）
     private float checkInterval = 0.05f;
     private float lastCheckTime;
+
+
+    //Box
+    public static ChestUI currentOpenChest;
+    private string chestTargetGridType;
+    private int chestTargetGridIndex;
+    private int chestTargetX, chestTargetY;
+    private bool canPlaceInChest;
 
     void Awake()
     {
@@ -58,17 +70,22 @@ public class BackpackManage : MonoBehaviour
     }
 
 
-    public void GetComponent() // 外部获取联机对象组件方法，若是人物自身脚本可直接GetComponent
+    public void InitComponent() // 外部获取单机对象组件方法，若是人物自身脚本可直接GetComponent
     {
-        localPlayer = NetworkClient.localPlayer.GetComponent<Player>();
-        playerBackpack = NetworkClient.localPlayer.GetComponent<PlayerBackpack>();
+        // 单机模式：通过查找标签获取本地玩家
+        GameObject playerObj = GameObject.FindWithTag("Player");
+        if (playerObj != null)
+        {
+            localPlayer = playerObj.GetComponent<Player>();
+            playerBackpack = playerObj.GetComponent<PlayerBackpack>();
+            playerMove = playerObj.GetComponent<Player_Move>();
+            playerBackpack.OnInventoryChanged += UpdateBackpack;
+        }
     }
 
     void Start()
     {
         InitBackpack();
-        GetComponent();
-        playerBackpack.OnInventoryChanged += UpdateBackpack;
     }
 
 
@@ -76,14 +93,22 @@ public class BackpackManage : MonoBehaviour
     {
         if (Input.GetKeyDown(KeyCode.B)) // 开关背包
         {
-            SelectItem(new InventoryItem());
-            showBackpack.SetActive(!showBackpack.activeSelf);
-            if (showBackpack.activeSelf) // 背包打开时更新背包
-                UpdateBackpack();
+            InputBOpen();
         }
 
         if (currentSelectedItem.item != null && Input.GetKeyDown(KeyCode.R)) // 选定并旋转
             RotateSelectedItem();
+    }
+
+    public void InputBOpen()
+    {
+        SelectItem(new InventoryItem());
+            showBackpack.SetActive(!showBackpack.activeSelf);
+            if (showBackpack.activeSelf) // 背包打开时更新背包
+                UpdateBackpack();
+        
+        playerMove.isMouse = !playerMove.isMouse;
+        
     }
 
     void InitBackpack() // 初始化背包
@@ -197,24 +222,40 @@ public class BackpackManage : MonoBehaviour
         lastHightSlot = null;
     }
 
-    public void OnDrag(InventoryItem item, PointerEventData eventData) // 在Slot的OnDrag(PointerEventData eventData)里调用，即拖拽过程中每帧调用
+    public void OnDrag(InventoryItem item, PointerEventData eventData)
     {
-        if (Time.time - lastCheckTime < checkInterval && Vector2.Distance(Input.mousePosition, lastMousePos) < 5f) return; // 防止频繁检查
+        if (Time.time - lastCheckTime < checkInterval && Vector2.Distance(Input.mousePosition, lastMousePos) < 5f) return;
 
         lastMousePos = Input.mousePosition;
         lastCheckTime = Time.time;
 
-        Slot targetSlot = GetSlotUnderMouse(eventData); // 实时检测鼠标下的格子
-
-        if (targetSlot != null)
+        Slot targetSlot = GetSlotUnderMouse(eventData);
+        if (targetSlot != null && targetSlot.transform.IsChildOf(backpackArea))
         {
             lastHightSlot = targetSlot;
-            UpdateHighlight(item, targetSlot); // 拖动光标检测到格子时更新高亮
+            UpdateHighlight(item, targetSlot);
+            canPlaceInChest = false; // 重置箱子放置标志
+        }
+        else if (currentOpenChest != null && currentOpenChest.IsPointInChestArea(Input.mousePosition, eventData))
+        {
+            // 鼠标在箱子区域内，尝试获取放置位置并高亮
+            canPlaceInChest = currentOpenChest.TryGetPlacementFromExternal(item, eventData,
+                out chestTargetGridType, out chestTargetGridIndex, out chestTargetX, out chestTargetY);
+            // 清除背包自身高亮
+            ClearHighlight();
+            highlightGrid = null;
         }
         else if (IsPointInAnyBackpackArea(Input.mousePosition, eventData) && lastHightSlot != null)
-            UpdateHighlight(item, lastHightSlot); // 拖动光标在背包区域且已经存在高亮时更新高亮
-        else // 拖动光标不在背包区域且没有高亮时清除高亮
+        {
+            UpdateHighlight(item, lastHightSlot);
+            canPlaceInChest = false;
+        }
+        else
+        {
             ClearHighlight();
+            if (currentOpenChest != null) currentOpenChest.ClearHighlightExternal();
+            canPlaceInChest = false;
+        }
     }
 
     // 更新高亮
@@ -341,17 +382,42 @@ public class BackpackManage : MonoBehaviour
 
     public void EndDrag(InventoryItem item, PointerEventData eventData)
     {
-        if (!IsPointInAnyBackpackArea(Input.mousePosition, eventData)) // 结束拖动后光标不在背包区域执行丢弃物品方法
+        // 1. 优先判断是否在箱子区域内
+        if (currentOpenChest != null && currentOpenChest.IsPointInChestArea(Input.mousePosition, eventData))
         {
+            if (canPlaceInChest)
+            {
+                // 从背包移除，添加到箱子
+                playerBackpack.RemoveItem(draggingItem);
+                currentOpenChest.chestInventory.AddItemAtPosition(
+                    draggingItem.item, draggingItem.amount,
+                    chestTargetGridType, chestTargetGridIndex,
+                    chestTargetX, chestTargetY, draggingItem.isRotated);
+                Debug.Log($"物品 {draggingItem.item.name} 移动到箱子");
+            }
+            // 无论是否放置成功，都要清除高亮和拖拽数据
+            currentOpenChest.ClearHighlightExternal();
+            ClearHighlight();
+            highlightGrid = null;
+            canPlaceAtHighlight = false;
+            lastHightSlot = null;
+            draggingItem = new InventoryItem();
+            UpdateBackpack();
+            return;
+        }
+
+        // 2. 再判断背包区域（原逻辑）
+        if (!IsPointInAnyBackpackArea(Input.mousePosition, eventData))
+        {
+            Debug.Log("物品已丢弃");
             playerBackpack.RemoveItem(item);
             DropItem(item);
         }
-        else if (highlightGrid != null && canPlaceAtHighlight) // 存在高亮格子且可以放置（在Ondrag中已实时检测）
+        else if (highlightGrid != null && canPlaceAtHighlight)
         {
             string t = "";
             int idx = -1;
-
-            if (largeAreaGrids.Contains(highlightGrid))       // 查找这些可放置的绿色高亮格子位置，用于物品移动
+            if (largeAreaGrids.Contains(highlightGrid))
             {
                 t = "Large";
                 idx = largeAreaGrids.IndexOf(highlightGrid);
@@ -366,19 +432,16 @@ public class BackpackManage : MonoBehaviour
                 t = "Small";
                 idx = smallAreaGrids.IndexOf(highlightGrid);
             }
-
             playerBackpack.MoveItem(draggingItem, t, idx, highlightX, highlightY, draggingItem.isRotated);
         }
 
-        // 重置高亮
+        // 重置状态
         ClearHighlight();
         highlightGrid = null;
         canPlaceAtHighlight = false;
         lastHightSlot = null;
-
-        draggingItem = new InventoryItem(); // 清空拖动的物品数据
-
-        UpdateBackpack(); // 更新背包UI
+        draggingItem = new InventoryItem();
+        UpdateBackpack();
     }
 
     public Slot GetSlotUnderMouse(PointerEventData e) // 获取鼠标下的格子（要知道当前格子类型，不同区域格子大小会不同），以便拖动时的物品图标能随鼠标经过的格子的大小不同而变化
@@ -556,5 +619,15 @@ public class BackpackManage : MonoBehaviour
             var item = GetItemData(i.itemId);
             if (item != null) playerBackpack.AddItem(item, i.amount);
         }
+    }
+
+
+    // 添加到 BackpackManage 类中
+    public bool TryGetGridInfo(Slot[,] grid, out string type, out int index)
+    {
+        if (largeAreaGrids.Contains(grid)) { type = "Large"; index = largeAreaGrids.IndexOf(grid); return true; }
+        if (middleAreaGrids.Contains(grid)) { type = "Middle"; index = middleAreaGrids.IndexOf(grid); return true; }
+        if (smallAreaGrids.Contains(grid)) { type = "Small"; index = smallAreaGrids.IndexOf(grid); return true; }
+        type = null; index = -1; return false;
     }
 }

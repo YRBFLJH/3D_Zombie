@@ -17,9 +17,9 @@ TagManager:
   - UI
   - Obstacle
   - Player
-  - 
-  - 
-  - 
+  - Enemy
+  - Bullet
+  - Ground
   - 
   - 
   - 

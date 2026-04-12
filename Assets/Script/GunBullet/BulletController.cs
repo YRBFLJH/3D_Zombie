@@ -1,50 +1,34 @@
 using System.Collections;
 using UnityEngine;
-using Mirror;
-using Mirror.BouncyCastle.Crypto.Utilities;
+using System.Collections.Generic; // 必须加，用于遍历字典
 
-public class BulletController : NetworkBehaviour
+public class BulletController : MonoBehaviour
 {
     public BulletData bulletData;
     private Rigidbody rb;
-
-    float damage; 
-
-    void Update()
-    {
-        
-    }
+    float damage;
 
     void Awake()
     {
         rb = GetComponent<Rigidbody>();
     }
 
-    // 仅服务器调用：初始化子弹
-    [Server]
-    public void InitBullet(Vector3 dir,float damage)
+    public void InitBullet(Vector3 dir, float damage)
     {
         rb.velocity = dir * bulletData.speed;
-
         this.damage = damage;
-        
-        // 服务器定时销毁
         StartCoroutine(DestroyAfter(bulletData.lifeTime));
     }
 
     IEnumerator DestroyAfter(float delay)
     {
         yield return new WaitForSeconds(delay);
-        if (gameObject != null && isServer)
-            NetworkServer.Destroy(gameObject);
+        if (gameObject != null)
+            Destroy(gameObject);
     }
 
-    [ServerCallback]
-    void OnTriggerEnter(Collider other)
+    void OnCollisionEnter(Collision collision)
     {
-        if (other.tag != "Enemy") return;
-
-        Enemy_Controller enemy = other.GetComponentInParent<Enemy_Controller>();
-        enemy.TakeDamage(damage);
+        Destroy(gameObject);
     }
 }

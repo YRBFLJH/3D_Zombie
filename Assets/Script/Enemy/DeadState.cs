@@ -8,7 +8,7 @@ public class DeadState : BaseState
 
     public override void OnEnter()
     {
-        stateMachine.controller.RpcPlayDeadTrigger();
+        stateMachine.controller.PlayDeadTrigger();
         stateMachine.controller.speed = 0;
     }
 

@@ -15,7 +15,7 @@ public class AttackState : BaseState
         if (!enemyState.isAttack)
         {
             enemyState.isAttack = true;
-            stateMachine.controller.RpcPlayAttackTrigger();
+            stateMachine.controller.PlayAttackTrigger();
             stateMachine.controller.speed = 0;
         }
     }
@@ -35,7 +35,7 @@ public class AttackState : BaseState
         if (stateMachine.controller.CanAttack())
             {
                 enemyState.isAttack = true;
-                stateMachine.controller.RpcPlayAttackTrigger();
+                stateMachine.controller.PlayAttackTrigger();
                 stateMachine.controller.speed = 0;
                 return;
             }

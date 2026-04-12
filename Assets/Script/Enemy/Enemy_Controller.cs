@@ -1,19 +1,17 @@
 using System.Collections.Generic;
 using UnityEngine;
-using Mirror;
 
-public class Enemy_Controller : NetworkBehaviour
+public class Enemy_Controller : MonoBehaviour
 {
     [HideInInspector]
     public Transform target;
-    public NetworkAnimator animator;
+    public Animator animator;
     [HideInInspector]
     public Animator anim;
 
-
     // 状态机
     [HideInInspector]
-    [SyncVar] public bool isDead = false;
+    public bool isDead = false;
     [HideInInspector]
     public Enemy_State state;
     [HideInInspector]
@@ -52,17 +50,15 @@ public class Enemy_Controller : NetworkBehaviour
     public LayerMask obstacleLayer; // 障碍物所在层次
 
     [HideInInspector]
-    [SyncVar] public float speed;
+    public float speed;
     [HideInInspector]
-    [SyncVar] public bool animRun;
+    public bool animRun;
     [HideInInspector]
-    [SyncVar] public bool animWalk;
+    public bool animWalk;
     [HideInInspector]
-    [SyncVar] public bool animIdle;
+    public bool animIdle;
 
-    [SyncVar] float health;
-    [SyncVar] float maxHealth;
-
+    float health;
 
     void Awake()
     {
@@ -79,40 +75,37 @@ public class Enemy_Controller : NetworkBehaviour
 
     void Start()
     {
-        anim = animator.animator;
+        anim = animator;
 
         stateMachine.ChangeState(idleState); // 初始状态为站立
 
-        health = maxHealth = 100f;
+        health = 100f;
     }
-
 
     void Update()
     {
-        if (isServer)
+        //让状态机实时更新状态
+        stateMachine.UpdateState();
+
+        // 实时探测是否发现玩家
+        AutoFindPlayer();
+
+        // 如果玩家在探测范围内，开始寻路移动
+        if (target != null) StartMoveByFindPlayer();
+        // 否则定时随机移动（巡逻）
+        else
         {
-            //让状态机实时更新状态
-            stateMachine.UpdateState();
-
-            // 实时探测是否发现玩家
-            AutoFindPlayer();
-
-            // 如果玩家在探测范围内，开始寻路移动
-            if (target != null) StartMoveByFindPlayer();
-            // 否则定时随机移动（巡逻）
-            else
+            if (Time.time >= lastRandomMoveTime + randomMoveTime)
             {
-                if (Time.time >= lastRandomMoveTime + randomMoveTime)
-                {
-                    RandomMovePath();
-                    lastRandomMoveTime = Time.time;
-                }
-                MoveAlongPath();
+                RandomMovePath();
+                lastRandomMoveTime = Time.time;
             }
-            
-            // 通过速度更新状态
-            UpdateStateBySpeed();
+            MoveAlongPath();
         }
+        
+        // 通过速度更新状态
+        UpdateStateBySpeed();
+
         if (isDead)
         {
             anim.SetBool("isRun", false);
@@ -124,17 +117,11 @@ public class Enemy_Controller : NetworkBehaviour
         anim.SetBool("isWalk", animWalk);
         anim.SetBool("isIdle", animIdle);
 
-
-
-
-
-         //Debug可视化路径、终点（测试用）
-            Debug.DrawLine(transform.position + Vector3.up, endPosition + Vector3.up, Color.cyan, 0.5f);
-            Debug.DrawLine(endPosition + Vector3.up * 0.5f + Vector3.left * 0.3f, endPosition + Vector3.up * 0.5f + Vector3.right * 0.3f, Color.magenta, 0.5f);
-            Debug.DrawLine(endPosition + Vector3.up * 0.5f + Vector3.back * 0.3f, endPosition + Vector3.up * 0.5f + Vector3.forward * 0.3f, Color.magenta, 0.5f);
-
+        //Debug可视化路径、终点（测试用）
+        Debug.DrawLine(transform.position + Vector3.up, endPosition + Vector3.up, Color.cyan, 0.5f);
+        Debug.DrawLine(endPosition + Vector3.up * 0.5f + Vector3.left * 0.3f, endPosition + Vector3.up * 0.5f + Vector3.right * 0.3f, Color.magenta, 0.5f);
+        Debug.DrawLine(endPosition + Vector3.up * 0.5f + Vector3.back * 0.3f, endPosition + Vector3.up * 0.5f + Vector3.forward * 0.3f, Color.magenta, 0.5f);
     }
-
 
     // 开始寻路移动
     void StartMoveByFindPlayer()
@@ -147,7 +134,7 @@ public class Enemy_Controller : NetworkBehaviour
 
             // 终点：目标（玩家）与自身的直线方位后面一些【防止寻路终点为玩家自身会不符合游戏体验】
             Vector3 dirFromAI = (target.position - transform.position).normalized; // AI和目标之间的向量
-            endPosition = target.position - dirFromAI * 0.75f;
+            endPosition = target.position - dirFromAI * 0.25f;
             Astar_Node endNode = Astar_GridMap.instance.WorldToWalkableNode(endPosition);
 
             // 算出路径
@@ -194,42 +181,40 @@ public class Enemy_Controller : NetworkBehaviour
     }
 
     // 自动探测寻找玩家（多玩家时只锁最近的，不主动丢失目标）
-void AutoFindPlayer()
-{
-    // 已经有目标了，就不重新找了 —— 完全保留你原来逻辑
-    if (target != null) return;
-
-    Collider[] hitColliders = Physics.OverlapSphere(transform.position, viewDistance, playerLayer);
-
-    Transform closestPlayer = null;
-    float closestDist = Mathf.Infinity;
-
-    foreach (var col in hitColliders)
+    void AutoFindPlayer()
     {
-        Vector3 dirToPlayer = (col.transform.position - transform.position).normalized;
-        float angle = Vector3.Angle(transform.forward, dirToPlayer);
+        // 已经有目标了，就不重新找了 —— 完全保留你原来逻辑
+        if (target != null) return;
 
-        if (angle <= viewAngle)
+        Collider[] hitColliders = Physics.OverlapSphere(transform.position, viewDistance, playerLayer);
+
+        Transform closestPlayer = null;
+        float closestDist = Mathf.Infinity;
+
+        foreach (var col in hitColliders)
         {
-            float dist = Vector3.Distance(transform.position, col.transform.position);
-            // 只记录最近的
-            if (dist < closestDist)
+            Vector3 dirToPlayer = (col.transform.position - transform.position).normalized;
+            float angle = Vector3.Angle(transform.forward, dirToPlayer);
+
+            if (angle <= viewAngle)
             {
-                closestDist = dist;
-                closestPlayer = col.transform;
+                float dist = Vector3.Distance(transform.position, col.transform.position);
+                // 只记录最近的
+                if (dist < closestDist)
+                {
+                    closestDist = dist;
+                    closestPlayer = col.transform;
+                }
             }
         }
+
+        // 找到最近的才绑定，其他逻辑不动
+        if (closestPlayer != null)
+        {
+            target = closestPlayer;
+            lastTargetPos = target.position;
+        }
     }
-
-    // 找到最近的才绑定，其他逻辑不动
-    if (closestPlayer != null)
-    {
-        target = closestPlayer;
-        lastTargetPos = target.position;
-    }
-}
-
-
 
     // 简单路径平滑：从当前位置的点开始，能直线看见的点(中间没有障碍物)就合并成一个【极大减少了中途的小拐弯】
     List<Vector3> SmoothPath(List<Vector3> rawPath)
@@ -272,7 +257,6 @@ void AutoFindPlayer()
 
         return result;
     }
-
 
     // 在半径radius范围内随机一个移动的格子
     Astar_Node RandomMoveNode(int radius = 5)
@@ -362,7 +346,6 @@ void AutoFindPlayer()
                 Rotation(moveDirection);
             }
             
-
             // 几乎到达路径点时，可当作已到达此路径点
             if (Vector3.Distance(transform.position, targetPos) < 0.25f)
             {
@@ -400,20 +383,18 @@ void AutoFindPlayer()
         else return false;
     }
 
-    // 状态脚本调用，让所有客户端调用（SetTrigger不能[SyncVar]同步）
-    [ClientRpc]
-    public void RpcPlayAttackTrigger()
+    // 播放攻击动画触发器（本地直接调用）
+    public void PlayAttackTrigger()
     {
         anim.SetTrigger("isAttack");
     }
 
-    [ClientRpc]
-    public void RpcPlayDeadTrigger()
+    // 播放死亡动画触发器（本地直接调用）
+    public void PlayDeadTrigger()
     {
         anim.SetTrigger("isDead");
     }
 
-    [Server]
     public void TakeDamage(float damage)
     {
         if (health <= 0)

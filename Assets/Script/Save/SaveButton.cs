@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using System;
-using Mirror;
 
 public class SaveButton : MonoBehaviour
 {
@@ -17,9 +16,14 @@ public class SaveButton : MonoBehaviour
 
     void Start()
     {
-        localPlayer = NetworkClient.localPlayer.GetComponent<Player>();
-        localPlayerState = NetworkClient.localPlayer.GetComponent<Player_State>();
-        localPlayerMove = NetworkClient.localPlayer.GetComponent<Player_Move>();
+        // 单机模式：通过查找标签获取本地玩家
+        GameObject playerObj = GameObject.FindWithTag("Player");
+        if (playerObj == null)
+            return;
+
+        localPlayer = playerObj.GetComponent<Player>();
+        localPlayerState = playerObj.GetComponent<Player_State>();
+        localPlayerMove = playerObj.GetComponent<Player_Move>();
 
         button = GetComponent<Button>();
         button.onClick.AddListener(Save);

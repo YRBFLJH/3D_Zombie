@@ -22,6 +22,9 @@ public class GunData : ScriptableObject
     public float reloadTime; //换弹时间
     public float recoilForce; //后坐力
 
+    public GameObject holeEnemy;
+    public GameObject holeBulliding;
+
     [Header("音效参数")]
     public AudioClip shootSound; //射击音效
     public AudioClip reloadSound; //换弹音效

@@ -2,10 +2,8 @@ using System.Collections;
 using System.Collections.Generic;
 using Cinemachine;
 using UnityEngine;
-using Mirror;
 
-
-public class Player_Getcomponent : NetworkBehaviour
+public class Player_Getcomponent : MonoBehaviour
 {
     // 自身组件
     [HideInInspector]
@@ -23,7 +21,6 @@ public class Player_Getcomponent : NetworkBehaviour
     [HideInInspector]
     public Player_State playerStateCS;
 
-
     public Transform lookFllow;
     public Transform lookAt;
 
@@ -34,7 +31,6 @@ public class Player_Getcomponent : NetworkBehaviour
     public Transform crosshair;
     [HideInInspector]
     public GameObject virtualCamera;
-
 
     void Awake()
     {
@@ -49,14 +45,6 @@ public class Player_Getcomponent : NetworkBehaviour
 
     void Start()
     {
-
-    }
-
-    public override void OnStartLocalPlayer()
-    {
-        base.OnStartLocalPlayer();
-
-
         crosshair = GameObject.FindWithTag("Crosshair").transform;
         crosshair.gameObject.SetActive(false);
 

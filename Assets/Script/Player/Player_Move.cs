@@ -2,25 +2,21 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEditor.Build.Content;
 using UnityEngine;
-using Mirror;
 
-public class Player_Move : NetworkBehaviour
+public class Player_Move : MonoBehaviour
 {
-    Player_Getcomponent playercomponent;
+    Player_Getcomponent playerComponent;
     Player Player;
-
 
     //X轴Y轴灵敏度
     public float rotationSpeedX = 2f; 
     public float rotationSpeedY = 1f;
-
 
     private float rotationX = 0f; 
     private float rotationY = 0f;  
 
     public Transform virtualCameraFllow; //让摄像机能在玩家站立时旋转角度
     Transform virtualCamera;
-
 
     private bool running;
     float playerSpeed;
@@ -39,32 +35,27 @@ public class Player_Move : NetworkBehaviour
 
     private Player_Shoot playerShoot;
 
-
     float playerForwardY;
     float yoffset;
 
     float gravity = -9.8f;
     float verticalVelocity;
 
+    public bool isMouse = false;
 
     void Awake()
     {
-        playercomponent = GetComponent<Player_Getcomponent>();
+        playerComponent = GetComponent<Player_Getcomponent>();
     }
 
     void Start()
     {   
-        if (!isLocalPlayer) return;
+        Player = playerComponent.playerCS;
+        playerAnimator = playerComponent.playerAnimatorCS;
+        characterController = playerComponent.characterController;
+        playerShoot = playerComponent.playerShootCS;
 
-        Player = playercomponent.playerCS;
-        playerAnimator = playercomponent.playerAnimatorCS;
-        characterController = playercomponent.characterController;
-        playerShoot = playercomponent.playerShootCS;
-
-        virtualCamera = playercomponent.virtualCamera.transform;
-
-        // Cursor.lockState = CursorLockMode.Locked;
-        // Cursor.visible = false;
+        virtualCamera = playerComponent.virtualCamera.transform;
 
         playerSpeed = 3f;
     }
@@ -72,12 +63,25 @@ public class Player_Move : NetworkBehaviour
     void Update() 
     {   
         Move();
+        CursorChange();
+    }
+
+    void CursorChange()
+    {
+        if (!isMouse)
+        {
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+        }
+        else
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
     }
 
     void Move()
     {
-        if (!isLocalPlayer) return;
-
         //摄像机视角
         float mouseX = Input.GetAxis("Mouse X") * rotationSpeedY;
         float mouseY = Input.GetAxis("Mouse Y") * rotationSpeedX;
@@ -90,19 +94,11 @@ public class Player_Move : NetworkBehaviour
 
         if (playerShoot.isAiming)  // 瞄准时视角变化
         {
-            playerForwardY = transform.eulerAngles.y;
-            yoffset = Mathf.DeltaAngle(playerForwardY,rotationY);
-            yoffset = Mathf.Clamp(yoffset, -75f, 40f);
-
-            rotationY = playerForwardY + yoffset;
-
-
             rotationX = Mathf.Clamp(rotationX, -30f, 30f);
         }
     
         // 旋转摄像机跟随的点从而旋转摄像机
         virtualCameraFllow.rotation = Quaternion.Euler(rotationX, rotationY, 0f);
-
 
         //移动
         speed = running ? playerSpeed + 5.5f : playerSpeed;
@@ -128,7 +124,6 @@ public class Player_Move : NetworkBehaviour
             // 空中自由落体下落
             verticalVelocity += gravity * Time.deltaTime;
         }
-
 
         moveDir = cameraRight * horizontal + cameraForward * vertical;
         moveDir.Normalize();
@@ -178,14 +173,12 @@ public class Player_Move : NetworkBehaviour
         }
         else //瞄准时
         {
-            
-            
             cameraForward.y = 0;
             cameraForward.Normalize();
 
             if (cameraForward.magnitude > 0.01f)
             {
-                targetRotation = Quaternion.LookRotation(cameraForward + transform.right * 0.9f);
+                targetRotation = Quaternion.LookRotation(cameraForward + transform.right * 0.95f);
                 transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * characterRotateSmooth * 2f);
             }
         }

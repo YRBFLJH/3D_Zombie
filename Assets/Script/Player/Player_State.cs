@@ -2,10 +2,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using Mirror;
-using Telepathy;
 
-public class Player_State : NetworkBehaviour
+public class Player_State : MonoBehaviour
 {
     Player_Getcomponent playerGetcomponent;
     Player player;
@@ -22,41 +20,71 @@ public class Player_State : NetworkBehaviour
     public float thirstRecoverConsumption = 3; // 自然消耗饮水值时间
     float lastThirstRecoverConsumption;
 
-
     // 属性数值
     [HideInInspector]
-    [SyncVar]public float speed;
-
-
-    [HideInInspector]
-    [SyncVar(hook = nameof(UpdateHealthUI))]public float health;
-    [HideInInspector]
-    [SyncVar]public float maxHealth;
+    public float speed;
 
     [HideInInspector]
-    [SyncVar(hook = nameof(UpdateSatietyUI))]public float satiety;
-    [HideInInspector]
-    [SyncVar]public float maxSatiety;
+    private float _health;
+    public float health
+    {
+        get => _health;
+        set
+        {
+            float oldVal = _health;
+            _health = value;
+            UpdateHealthUI(oldVal, _health);
+        }
+    }
 
     [HideInInspector]
-    [SyncVar(hook = nameof(UpdateThirstUI))]public float thirst;
+    public float maxHealth;
+
     [HideInInspector]
-    [SyncVar]public float maxThirst;
+    private float _satiety;
+    public float satiety
+    {
+        get => _satiety;
+        set
+        {
+            float oldVal = _satiety;
+            _satiety = value;
+            UpdateSatietyUI(oldVal, _satiety);
+        }
+    }
+
+    [HideInInspector]
+    public float maxSatiety;
+
+    [HideInInspector]
+    private float _thirst;
+    public float thirst
+    {
+        get => _thirst;
+        set
+        {
+            float oldVal = _thirst;
+            _thirst = value;
+            UpdateThirstUI(oldVal, _thirst);
+        }
+    }
+
+    [HideInInspector]
+    public float maxThirst;
 
     private void Awake()
     {
         playerGetcomponent = GetComponent<Player_Getcomponent>();
+        player = playerGetcomponent.playerCS;
     }
 
-    public override void OnStartServer()
+    void Start()
     {
-        base.OnStartServer();
         health = maxHealth = 100;
         satiety = maxSatiety = 100;
         thirst = maxThirst = 100;
     }
 
-    [ServerCallback]
     void Update()
     {
         HeathRecover();
@@ -65,7 +93,6 @@ public class Player_State : NetworkBehaviour
     }
 
     // 被攻击，由攻击方调用
-    [Server]
     public void TakeDamage(float damage)
     {
         health -= damage;
@@ -77,14 +104,12 @@ public class Player_State : NetworkBehaviour
     }
 
     // 死亡
-    [Server]
     void Dead()
     {
         health = maxHealth; //测试
         Debug.Log("死亡");
     }
 
-    [Server]
     void HeathRecover() // 自然回血
     {
         if (health > 0 && Time.time - lastHealthRecoverTime >= healthRecoverTime && health < maxHealth)
@@ -94,7 +119,6 @@ public class Player_State : NetworkBehaviour
         }
     }
 
-    [Server]
     void SatietyConsumption() // 自然消耗饱食度
     {
         if (satiety > 0 && Time.time - lastSatietyConsumptionTime >= satietyConsumptionTime)
@@ -110,7 +134,6 @@ public class Player_State : NetworkBehaviour
         }
     }
 
-    [Server]
     void ThirstRecoverConsumption() // 自然消耗饮水值
     {
         if (thirst > 0 && Time.time - lastThirstRecoverConsumption >= thirstRecoverConsumption)
@@ -126,7 +149,6 @@ public class Player_State : NetworkBehaviour
         }
     }
 
-    [Server]
     void ContinueLossHP() // 持续扣血
     {
         if (health > 0 && Time.time - lastHealthConsumptionTime >= healthConsumptionTime)
@@ -136,41 +158,33 @@ public class Player_State : NetworkBehaviour
         }
     }
 
-    void UpdateHealthUI(float oldVal, float newVal) 
+    void UpdateHealthUI(float oldVal, float newVal)
     {
-        if (!isLocalPlayer) return;
         StateUI.instance.UpdateHealthUI(newVal, maxHealth);
     }
 
-    void UpdateSatietyUI(float oldVal, float newVal) 
+    void UpdateSatietyUI(float oldVal, float newVal)
     {
-        if (!isLocalPlayer) return;
         StateUI.instance.UpdateSatietyUI(newVal, maxSatiety);
     }
 
-    void UpdateThirstUI(float oldVal, float newVal) 
+    void UpdateThirstUI(float oldVal, float newVal)
     {
-        if (!isLocalPlayer) return;
         StateUI.instance.UpdateThirstUI(newVal, maxThirst);
     }
 
-
-
     // 测试按钮用
-    [Command]
-    public void CmdReduceHealth(float value)
+    public void ReduceHealth(float value)
     {
         health = Mathf.Max(0, health - value);
     }
 
-    [Command]
-    public void CmdAddSatiety(float value)
+    public void AddSatiety(float value)
     {
         satiety = Mathf.Min(maxSatiety, satiety + value);
     }
 
-    [Command]
-    public void CmdAddThirst(float value)
+    public void AddThirst(float value)
     {
         thirst = Mathf.Min(maxThirst, thirst + value);
     }

@@ -1,12 +1,11 @@
-using Mirror;
 using UnityEngine;
 
-public class Enemy_State : NetworkBehaviour
+public class Enemy_State : MonoBehaviour
 {
     [HideInInspector]
-    [SyncVar] public bool isAttack;
+    public bool isAttack;
     [HideInInspector]
-    [SyncVar] public bool isStopRotate; // 动画开始时应停止旋转
+    public bool isStopRotate; // 动画开始时应停止旋转
 
     public BoxCollider Weapon;
 
@@ -19,7 +18,6 @@ public class Enemy_State : NetworkBehaviour
     {
         isAttack = false;
         isStopRotate = false;
-
     }
 
     // 攻击帧开启检测
@@ -47,6 +45,6 @@ public class Enemy_State : NetworkBehaviour
 
     void DestroyDead()
     {
-        NetworkServer.Destroy(gameObject.transform.parent.gameObject);
+        Destroy(gameObject.transform.parent.gameObject);
     }
 }

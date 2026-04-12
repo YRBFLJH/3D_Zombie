@@ -15,7 +15,6 @@ public class RegisterItem : MonoBehaviour
         foreach (var item in allItems)
         {
             BackpackManage.RegisterItem(item);
-            Debug.Log($"注册物品: {item.itemName} (ID={item.id})");
         }
     }
 }

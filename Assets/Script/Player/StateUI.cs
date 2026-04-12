@@ -18,6 +18,7 @@ public class StateUI : MonoBehaviour
 
     void Start()
     {
+        if(Player.Instance == null) return;
         playerGetcomponent = Player.Instance.GetComponent<Player_Getcomponent>();
         playerState = playerGetcomponent.playerStateCS;
     }

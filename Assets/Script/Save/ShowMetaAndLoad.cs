@@ -5,7 +5,6 @@ using UnityEngine;
 using System;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
-using Mirror;
 
 public class ShowMetaAndLoad : MonoBehaviour
 {
@@ -30,7 +29,11 @@ public class ShowMetaAndLoad : MonoBehaviour
 
     void Start() 
     {
-        localPlayer = NetworkClient.localPlayer.GetComponent<Player>();
+        // 单机模式：通过查找标签获取本地玩家
+        GameObject playerObj = GameObject.FindWithTag("Player");
+        if (playerObj != null)
+            localPlayer = playerObj.GetComponent<Player>();
+
         loadButton.onClick.AddListener(Load);
     }
 

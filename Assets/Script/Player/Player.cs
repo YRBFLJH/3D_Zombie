@@ -2,10 +2,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Net;
 using UnityEngine;
-using Mirror;
 
-
-public class Player : NetworkBehaviour
+public class Player : MonoBehaviour
 {
     public static Player Instance;
     public bool isArmed;
