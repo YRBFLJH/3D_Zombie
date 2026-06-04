@@ -35,6 +35,10 @@ public class PlayerSaveData // 玩家数据
     public float speed,health,maxHealth,satiety,maxSatiety,thirst,maxThirst;
     public int level,gold;
     public Vector3Data position; //Vector3不能直接序列号，需自定义
+    public int currentWave;
+    public int respawnCount;
+    public int totalKills;
+    public int equippedHeadId, equippedBodyId, equippedWeapon1Id, equippedWeapon2Id, equippedWeapon3Id;
 }
 
 

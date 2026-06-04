@@ -12,7 +12,7 @@ public class Player_Shoot : MonoBehaviour
     Player_Animator playerAnimator;
     Player player;
 
-    GunController currentGun;
+    [HideInInspector] public GunController currentGun;
     Transform crosshair;
     CinemachineVirtualCamera virtualCamera;
     Cinemachine3rdPersonFollow thirdPersonCamera;
@@ -22,6 +22,8 @@ public class Player_Shoot : MonoBehaviour
     public bool isAiming;
 
     float smoothSpeed = 5f; // 瞄准时灵敏度
+
+    private Camera mainCamera;
 
     [HideInInspector]
     public bool isReloading;
@@ -55,39 +57,75 @@ public class Player_Shoot : MonoBehaviour
         virtualCamera = playerGetcomponent.virtualCamera.GetComponent<CinemachineVirtualCamera>();
         thirdPersonCamera = virtualCamera.GetCinemachineComponent<Cinemachine3rdPersonFollow>();
         composer = virtualCamera.GetCinemachineComponent<CinemachineComposer>();
+
+        mainCamera = Camera.main;
     }
 
     public void SetCurrentGun(GunController gun) // 枪第一次OnEnble时自动注册
     {
         currentGun = gun;
-        leftBullet = currentGun.gunData.shootMagazineSize;
-        rightBullet = currentGun.gunData.allMagazineSize;
+        // Use saved ammo if available, otherwise use gun defaults
+        if (AutoSaveHandler.hasSavedAmmo)
+        {
+            leftBullet = AutoSaveHandler.savedLeftBullet;
+            rightBullet = AutoSaveHandler.savedRightBullet;
+            Debug.Log($"[子弹] SetCurrentGun 使用存档值: left={leftBullet}, right={rightBullet}");
+            AutoSaveHandler.hasSavedAmmo = false; // consume once
+        }
+        else
+        {
+            leftBullet = currentGun.gunData.shootMagazineSize;
+            rightBullet = currentGun.gunData.allMagazineSize;
+            Debug.Log($"[子弹] SetCurrentGun 使用默认值: left={leftBullet}, right={rightBullet}");
+        }
         UpdateBulletUI();
     }
 
+    private float lastBoltTime;
+
     void Update()
     {
+        // 任何UI打开时禁止射击和瞄准
+        if (BackpackManage.currentOpenChest != null
+            || (BackpackManage.Instance != null && BackpackManage.Instance.showBackpack.activeSelf))
+        {
+            if (isAiming)
+            {
+                isAiming = false;
+                playerAnimator.PlayAim(false);
+                crosshair.gameObject.SetActive(false);
+            }
+            return;
+        }
+
         if (currentGun == null) return;
 
-        // 左右弹夹不为0、正在瞄准、不在射击冷却、不是换弹时可射击
-        if (isAiming && Input.GetMouseButton(0) && Time.time >= lastShootTime + shootRate && leftBullet > 0 && !isReloading)
+        bool canShoot = isAiming && Time.time >= lastShootTime + shootRate && leftBullet > 0 && !isReloading;
+        // 拉栓武器需要额外判断拉栓完成
+        if (canShoot && currentGun.gunData.isBoltAction && Time.time < lastBoltTime) canShoot = false;
+
+        if (canShoot && Input.GetMouseButton(0))
         {
-            Ray aimRay = Camera.main.ScreenPointToRay(new Vector3(Screen.width / 2, Screen.height / 2, 0));
+            Ray aimRay = mainCamera.ScreenPointToRay(new Vector3(Screen.width / 2, Screen.height / 2, 0));
             Vector3 shootDir = aimRay.direction;
 
-            Vector3 fireShootDir = Camera.main.transform.forward;
-            fireEffect.Play();
-            
-            // 本地生成预测子弹
-            LocalBullet(firePoint.position, fireShootDir);
-            
-            // 直接执行射击逻辑（原CmdShoot内容）
-            Shoot(firePoint.position, fireShootDir);
-            
-            // 直接执行射线检测（原CmdRay内容）
+            Vector3 fireShootDir = mainCamera.transform.forward;
+            if (fireEffect != null) fireEffect.Play();
+
+            int pellets = currentGun.gunData.pelletsPerShot > 0 ? currentGun.gunData.pelletsPerShot : 1;
+            for (int i = 0; i < pellets; i++)
+            {
+                Vector3 pelletDir = GetPelletDirection(fireShootDir, currentGun.gunData.spreadAngle);
+                LocalBullet(firePoint.position, pelletDir);
+                Shoot(firePoint.position, pelletDir);
+            }
             ShootRay(shootDir);
-            
+
+            if (currentGun.gunData.isBoltAction)
+                lastBoltTime = Time.time + currentGun.gunData.fireRate;
+
             lastShootTime = Time.time;
+            NetworkManager.instance?.SendShootRequest(firePoint.position, fireShootDir);
         }
         else if (Input.GetMouseButton(0) && leftBullet <= 0) // 子弹为0时射击播放空壳音效
         {
@@ -102,6 +140,13 @@ public class Player_Shoot : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.R) && !isReloading && rightBullet > 0 && leftBullet < currentGun.gunData.shootMagazineSize) Reload();
 
         Aim();
+    }
+
+    Vector3 GetPelletDirection(Vector3 baseDir, float spreadAngle)
+    {
+        if (spreadAngle <= 0) return baseDir;
+        Vector3 randomDir = Random.insideUnitSphere;
+        return Vector3.Slerp(baseDir.normalized, randomDir, spreadAngle / 90f).normalized;
     }
 
     void LocalBullet(Vector3 position, Vector3 direction) // 本地生成预测子弹
@@ -123,14 +168,12 @@ public class Player_Shoot : MonoBehaviour
     void ShootRay(Vector3 shootDir)
     {
         int layerMask = LayerMask.GetMask("Enemy", "Ground", "Obstacle");
-        Ray ray = new Ray(Camera.main.transform.position, shootDir);
+        Ray ray = new Ray(mainCamera.transform.position, shootDir);
         if (Physics.Raycast(ray, out RaycastHit hit, maxRayDistance, layerMask))
         {
             if (hit.collider.CompareTag("Enemy"))
             {
-                Debug.Log("攻击到了敌人");
-                Enemy_Controller enemy = hit.collider.GetComponentInParent<Enemy_Controller>();
-                enemy.TakeDamage(currentGun.gunData.damage);
+                Debug.Log("Hit enemy — server validates damage");
             }
 
             SpawnBulletHole(hit.point, hit.normal, hit.collider.CompareTag("Enemy"));
@@ -159,10 +202,10 @@ public class Player_Shoot : MonoBehaviour
             Transform enemyParent = null;
             if (normal != Vector3.zero)
             {
-                Collider hitCollider = Physics.OverlapSphere(position, 0.01f, LayerMask.GetMask("Enemy"))[0];
-                if (hitCollider != null)
+                Collider[] hits = Physics.OverlapSphere(position, 0.01f, LayerMask.GetMask("Enemy"));
+                if (hits.Length > 0)
                 {
-                    enemyParent = hitCollider.transform;
+                    enemyParent = hits[0].transform;
                 }
             }
 
@@ -195,7 +238,8 @@ public class Player_Shoot : MonoBehaviour
         if (isAiming)
         {
             crosshair.gameObject.SetActive(true);
-            virtualCamera.m_Lens.FieldOfView = Mathf.Lerp(virtualCamera.m_Lens.FieldOfView, 40f, smoothSpeed * Time.deltaTime);
+            float targetFOV = currentGun != null ? currentGun.gunData.adsZoomFOV : 40f;
+            virtualCamera.m_Lens.FieldOfView = Mathf.Lerp(virtualCamera.m_Lens.FieldOfView, targetFOV, smoothSpeed * Time.deltaTime);
             thirdPersonCamera.Damping = new Vector3(0, 0, 0);
             thirdPersonCamera.CameraDistance = Mathf.Lerp(thirdPersonCamera.CameraDistance, 2f, smoothSpeed * Time.deltaTime);
             thirdPersonCamera.ShoulderOffset.x = Mathf.Lerp(thirdPersonCamera.ShoulderOffset.x, 0.45f, smoothSpeed * Time.deltaTime);
@@ -215,6 +259,27 @@ public class Player_Shoot : MonoBehaviour
     public void ShowHideBulletUI()
     {
         BulletAmoutInstance.instance.All.SetActive(player.isArmed);
+    }
+
+    public void PlayRemoteShoot(Vector3 firePos, Vector3 dir)
+    {
+        if (currentGun == null || currentGun.gunData == null) return;
+
+        if (fireEffect != null)
+        {
+            fireEffect.transform.position = firePos;
+            fireEffect.Play();
+        }
+
+        if (currentGun.gunData.bulletPrefab != null)
+            LocalBullet(firePos, dir);
+
+        // 远端也生成弹孔
+        int layerMask = LayerMask.GetMask("Enemy", "Ground", "Obstacle");
+        if (Physics.Raycast(firePos, dir, out RaycastHit hit, 200f, layerMask))
+        {
+            SpawnBulletHole(hit.point, hit.normal, hit.collider.CompareTag("Enemy"));
+        }
     }
 
     void UpdateBulletUI()

@@ -2,11 +2,10 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using TMPro;
-using Unity.Mathematics;
 
 public class InteracButtonManager : MonoBehaviour
 {
-    public static InteracButtonManager Intance;
+    public static InteracButtonManager Instance;
 
     public GameObject interactButtonPrefab;
     public GameObject interactButtonParent;
@@ -48,15 +47,11 @@ public class InteracButtonManager : MonoBehaviour
         // 按键控制操作
         if (Input.GetKeyDown(KeyCode.E) && selectedIndex >= 0 && selectedIndex < interactButtonList.Count)
             InteractBox();
-
-        // 生成第一个按钮/只剩一个按钮时,对其进行高亮
-        if (interactButtonList.Count == 1)
-            SelectButton(0);
     }
 
     void Awake()
     {
-        Intance = this;
+        Instance = this;
     }
 
     public void SpawnInteractButton(GameObject targetBox,string interactText)
@@ -68,6 +63,15 @@ public class InteracButtonManager : MonoBehaviour
 
         buttonDict.Add(targetBox, interactButton);
         interactButtonList.Add(interactButton);
+
+        // 只在新增按钮时更新高亮（原逻辑每帧 SelectButton 会触发整 Canvas 重绘，进入范围极卡）
+        if (interactButtonList.Count == 1)
+            SelectButton(0);
+        else
+        {
+            selectedIndex = Mathf.Clamp(selectedIndex, 0, interactButtonList.Count - 1);
+            RefreshButtonColors();
+        }
     }
 
     public void DestroyInteractButton(GameObject targetBox)
@@ -113,13 +117,17 @@ public class InteracButtonManager : MonoBehaviour
     // 通过字典查找按钮对应的箱子并进行操作
     void InteractBox()
     {
+        if (interactButtonList.Count == 0 || selectedIndex < 0 || selectedIndex >= interactButtonList.Count)
+            return;
+
         GameObject selectedButton = interactButtonList[selectedIndex];
 
         foreach (var box in buttonDict)
         {
             if (box.Value == selectedButton)
             {
-                box.Key.GetComponent<RewardBox>().StartOpen();
+                var reward = box.Key.GetComponent<RewardBox>();
+                if (reward != null) reward.StartOpen();
                 break;
             }
         }

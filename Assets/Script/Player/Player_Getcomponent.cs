@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Cinemachine;
 using UnityEngine;
+using UnityEngine.PlayerLoop;
 
 public class Player_Getcomponent : MonoBehaviour
 {
@@ -24,13 +25,12 @@ public class Player_Getcomponent : MonoBehaviour
     public Transform lookFllow;
     public Transform lookAt;
 
-    public Transform ItemSpawnPoint;
-
     // 外部组件
     [HideInInspector]
     public Transform crosshair;
     [HideInInspector]
     public GameObject virtualCamera;
+
 
     void Awake()
     {
@@ -41,14 +41,15 @@ public class Player_Getcomponent : MonoBehaviour
         playerAnimatorCS = GetComponent<Player_Animator>();
         playerStateCS = GetComponent<Player_State>();
         characterController = GetComponent<CharacterController>();
+
+        crosshair = GameObject.FindWithTag("Crosshair").transform;
+        virtualCamera = GameObject.FindWithTag("VirtualCamera");
     }
 
     void Start()
     {
-        crosshair = GameObject.FindWithTag("Crosshair").transform;
         crosshair.gameObject.SetActive(false);
 
-        virtualCamera = GameObject.FindWithTag("VirtualCamera");
         var vcam = virtualCamera.GetComponent<CinemachineVirtualCamera>();
         vcam.Follow = lookFllow;
         vcam.LookAt = lookAt;

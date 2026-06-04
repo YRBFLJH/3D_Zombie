@@ -15,7 +15,10 @@ public class RewardBox : MonoBehaviour
     bool isOpening = false;
     Coroutine openCoroutine;
 
+    Player player;
+
     public ItemData[] rewards;
+
 
     void Awake()
     {
@@ -25,18 +28,32 @@ public class RewardBox : MonoBehaviour
 
     void OnTriggerEnter(Collider other)
     {
-        if (other.gameObject.CompareTag("Player"))
-        {
-            InteracButtonManager.Intance.SpawnInteractButton(gameObject ,boxString);
-        }
+        if (!other.gameObject.CompareTag("Player")) return;
+
+        var pg = other.gameObject.GetComponent<Player_Getcomponent>();
+        if (pg == null || pg.playerCS == null) return;
+
+        player = pg.playerCS;
+        if (!player.isLocalPlayer) return;
+
+        if (InteracButtonManager.Instance != null)
+            InteracButtonManager.Instance.SpawnInteractButton(gameObject, boxString);
     }
 
     void OnTriggerExit(Collider other)
     {
-        if (other.gameObject.CompareTag("Player"))
-        {
-            InteracButtonManager.Intance.DestroyInteractButton(gameObject);
-        }
+        if (!other.gameObject.CompareTag("Player")) return;
+
+        var pg = other.gameObject.GetComponent<Player_Getcomponent>();
+        if (pg == null || pg.playerCS == null) return;
+        if (!pg.playerCS.isLocalPlayer) return;
+
+        // 离开范围时取消正在进行的开箱
+        if (isOpening)
+            StopOpen();
+
+        if (InteracButtonManager.Instance != null)
+            InteracButtonManager.Instance.DestroyInteractButton(gameObject);
     }
 
     IEnumerator OpenBox()
@@ -56,7 +73,9 @@ public class RewardBox : MonoBehaviour
 
     public void StartOpen()
     {
+        // 防止重复开启：正在开箱中 或 箱子UI已经打开
         if (isOpening) return;
+        if (BackpackManage.currentOpenChest != null) return;
 
         isOpening = true;
         currentTime = needOpenTime;
@@ -66,7 +85,11 @@ public class RewardBox : MonoBehaviour
 
     void StopOpen()
     {
-        StopCoroutine(openCoroutine);
+        if (openCoroutine != null)
+        {
+            StopCoroutine(openCoroutine);
+            openCoroutine = null;
+        }
 
         isOpening = false;
         openTime.SetActive(false);
@@ -77,8 +100,16 @@ public class RewardBox : MonoBehaviour
         Debug.Log("打开箱子");
         StopOpen();
 
-        // 打开箱子逻辑
+        ChestInventory inv = GetComponent<ChestInventory>();
+
+        // 本地先生成物品（确保离线/联机都有东西）
+        if (inv.items.Count == 0)
+            inv.InitRandomItems();
+
         GetComponent<ChestUI>().OpenChest();
-        GetComponent<ChestInventory>().InitRandomItems();
+
+        // 联机：将本地生成的物品提交至服务器（服务器广播给其他客户端）
+        if (NetworkManager.instance != null && NetworkManager.instance.playerId >= 0)
+            NetworkManager.instance.SendChestStateSubmit(inv.chestId, inv.items);
     }
 }

@@ -5,6 +5,12 @@ using UnityEngine.UI;
 
 public class BackpackManage : MonoBehaviour
 {
+    static readonly Vector2Int[] s_canPlaceNeighborOffsets = new Vector2Int[]
+    {
+        new Vector2Int(0, 0), new Vector2Int(1, 0), new Vector2Int(1, 1), new Vector2Int(0, 1), new Vector2Int(-1, 1),
+        new Vector2Int(-1, 0), new Vector2Int(-1, -1), new Vector2Int(0, -1), new Vector2Int(1, -1)
+    };
+
     public static BackpackManage Instance;
 
     [Header("背包配置")]
@@ -46,9 +52,15 @@ public class BackpackManage : MonoBehaviour
     public RectTransform areaRect;
     private Vector2 lastMousePos;
 
-    // 高亮检查间隔（防止每帧检测进行可忽略的没必要作用，性能优化）
-    private float checkInterval = 0.05f;
-    private float lastCheckTime;
+    [SerializeField] float dragProbeInterval = 0.066f;
+    /// <summary>与 Slot 拖拽节流共用，避免两处间隔不一致。</summary>
+    public float DragProbeInterval => dragProbeInterval;
+    private float lastDragProbeTime = -999f;
+    private const float DragProbeSqrDist = 25f;
+
+    Slot[,] _lastHighlightSigGrid;
+    int _lastHighlightSigX, _lastHighlightSigY;
+    bool _lastHighlightSigOk;
 
 
     //Box
@@ -72,13 +84,31 @@ public class BackpackManage : MonoBehaviour
 
     public void InitComponent() // 外部获取单机对象组件方法，若是人物自身脚本可直接GetComponent
     {
-        // 单机模式：通过查找标签获取本地玩家
-        GameObject playerObj = GameObject.FindWithTag("Player");
-        if (playerObj != null)
+        // 联机模式：只绑定本地玩家，避免误绑定到远程玩家导致空引用
+        Player[] allPlayers = FindObjectsOfType<Player>();
+        Player local = null;
+        foreach (var p in allPlayers)
         {
-            localPlayer = playerObj.GetComponent<Player>();
-            playerBackpack = playerObj.GetComponent<PlayerBackpack>();
-            playerMove = playerObj.GetComponent<Player_Move>();
+            if (p != null && p.isLocalPlayer)
+            {
+                local = p;
+                break;
+            }
+        }
+
+        if (local == null)
+        {
+            return;
+        }
+
+        localPlayer = local;
+        playerBackpack = local.GetComponent<PlayerBackpack>();
+        playerMove = local.GetComponent<Player_Move>();
+
+        if (playerBackpack != null)
+        {
+            // 防止重复订阅
+            playerBackpack.OnInventoryChanged -= UpdateBackpack;
             playerBackpack.OnInventoryChanged += UpdateBackpack;
         }
     }
@@ -91,24 +121,46 @@ public class BackpackManage : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetKeyDown(KeyCode.B)) // 开关背包
+
+        if (currentOpenChest == null && Input.GetKeyDown(KeyCode.B)) // 开关背包(箱子打开时禁止)
         {
             InputBOpen();
         }
 
         if (currentSelectedItem.item != null && Input.GetKeyDown(KeyCode.R)) // 选定并旋转
             RotateSelectedItem();
+
+        if (playerMove != null && currentOpenChest == null)
+            playerMove.isMouse = showBackpack.activeSelf; // 背包打开时显示鼠标，关闭时隐藏鼠标
     }
 
     public void InputBOpen()
     {
         SelectItem(new InventoryItem());
-            showBackpack.SetActive(!showBackpack.activeSelf);
-            if (showBackpack.activeSelf) // 背包打开时更新背包
-                UpdateBackpack();
-        
-        playerMove.isMouse = !playerMove.isMouse;
-        
+        showBackpack.SetActive(!showBackpack.activeSelf);
+        if (showBackpack.activeSelf) // 背包打开时更新背包
+            UpdateBackpack();
+        // playerMove.isMouse = !playerMove.isMouse;
+    }
+
+    /// <summary> 显式打开背包（用于箱子系统，避免 toggle 状态不同步）</summary>
+    public void ShowBackpackPanel()
+    {
+        if (!showBackpack.activeSelf)
+        {
+            showBackpack.SetActive(true);
+            UpdateBackpack();
+        }
+    }
+
+    /// <summary> 显式关闭背包</summary>
+    public void HideBackpackPanel()
+    {
+        if (showBackpack.activeSelf)
+        {
+            showBackpack.SetActive(false);
+            SelectItem(new InventoryItem());
+        }
     }
 
     void InitBackpack() // 初始化背包
@@ -220,14 +272,19 @@ public class BackpackManage : MonoBehaviour
         highlightGrid = null;
         canPlaceAtHighlight = false;
         lastHightSlot = null;
+        lastDragProbeTime = -999f;
+        lastMousePos = Input.mousePosition;
+        _lastHighlightSigGrid = null;
     }
 
     public void OnDrag(InventoryItem item, PointerEventData eventData)
     {
-        if (Time.time - lastCheckTime < checkInterval && Vector2.Distance(Input.mousePosition, lastMousePos) < 5f) return;
+        bool heavy = Time.unscaledTime - lastDragProbeTime >= dragProbeInterval
+            || Vector2.SqrMagnitude((Vector2)Input.mousePosition - lastMousePos) > DragProbeSqrDist;
+        if (!heavy) return;
 
         lastMousePos = Input.mousePosition;
-        lastCheckTime = Time.time;
+        lastDragProbeTime = Time.unscaledTime;
 
         Slot targetSlot = GetSlotUnderMouse(eventData);
         if (targetSlot != null && targetSlot.transform.IsChildOf(backpackArea))
@@ -261,8 +318,14 @@ public class BackpackManage : MonoBehaviour
     // 更新高亮
     void UpdateHighlight(InventoryItem item, Slot slot)
     {
-        // 判断格子是否可以放置物品
-        bool canPlace = CanPlace(item, slot.x, slot.y, slot.parentGrid, out int placeX, out int placeY); // 在OnDrag中实时检测
+        bool canPlace = CanPlace(item, slot.x, slot.y, slot.parentGrid, out int placeX, out int placeY);
+        if (slot.parentGrid == _lastHighlightSigGrid && placeX == _lastHighlightSigX && placeY == _lastHighlightSigY && canPlace == _lastHighlightSigOk)
+            return;
+
+        _lastHighlightSigGrid = slot.parentGrid;
+        _lastHighlightSigX = placeX;
+        _lastHighlightSigY = placeY;
+        _lastHighlightSigOk = canPlace;
 
         canPlaceAtHighlight = canPlace;
         highlightGrid = slot.parentGrid;
@@ -289,21 +352,7 @@ public class BackpackManage : MonoBehaviour
         int startY = Mathf.Max(0, centerY - h + 1);
         int endY = Mathf.Min(gh - h, centerY);
 
-        // 3*3范围
-        Vector2Int[] order = new Vector2Int[]
-        {
-            new(0, 0),    // 中心
-            new(1, 0),    // 右
-            new(1, 1),    // 右下
-            new(0, 1),    // 下
-            new(-1, 1),   // 左下
-            new(-1, 0),   // 左
-            new(-1, -1),  // 左上
-            new(0, -1),   // 上
-            new(1, -1),   // 右上
-        };
-
-        foreach (var offset in order)
+        foreach (var offset in s_canPlaceNeighborOffsets)
         {
             int x = centerX + offset.x;
             int y = centerY + offset.y;
@@ -378,6 +427,7 @@ public class BackpackManage : MonoBehaviour
     {
         foreach (var s in currentHighlightSlots) s.SetHighlight(false, default);
         currentHighlightSlots.Clear();
+        _lastHighlightSigGrid = null;
     }
 
     public void EndDrag(InventoryItem item, PointerEventData eventData)
@@ -614,11 +664,13 @@ public class BackpackManage : MonoBehaviour
 
     public void LoadInventory(InventorySaveData data)
     {
+        playerBackpack.items.Clear();
         foreach (var i in data.items)
         {
             var item = GetItemData(i.itemId);
-            if (item != null) playerBackpack.AddItem(item, i.amount);
+            if (item != null) playerBackpack.AddItemAtPosition(item, i.amount, i.gridType, i.gridIndex, i.x, i.y, i.isRotated);
         }
+        UpdateBackpack();
     }
 
 

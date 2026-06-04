@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -6,16 +7,175 @@ public class ChestInventory : MonoBehaviour
     [Header("箱子配置（与背包相同）")]
     public BackpackData backpackData;
 
+    [Tooltip("场景内唯一，用于联机同步")]
+    public int chestId = 1;
+
     // 改为普通列表
     public List<InventoryItem> items = new List<InventoryItem>();
 
     // 供 UI 注册刷新回调
     public event System.Action OnInventoryChanged;
 
-    void Start()
+    bool _suppressNetworkPush;
+    /// <summary>联机首次打开：若服务端尚无数据，收到空快照后由本地生成战利品并再提交。</summary>
+    bool _pendingInitLootIfEmpty;
+
+    [Tooltip("联机同步：合并短时间内的多次提交，减少序列化/发包与主线程卡顿")]
+    [SerializeField] float chestSyncDebounceSeconds = 0.15f;
+    Coroutine _debouncedChestPush;
+
+    void Awake()
     {
-        // 在修改 items 后手动调用 OnInventoryChanged，与 SyncList 回调效果一致
-        // 所有对 items 的修改方法均需触发事件
+        ChestNetworkRegistry.Register(this);
+    }
+
+    void OnDestroy()
+    {
+        if (_debouncedChestPush != null)
+        {
+            StopCoroutine(_debouncedChestPush);
+            _debouncedChestPush = null;
+        }
+        ChestNetworkRegistry.Unregister(this);
+    }
+
+    IEnumerator Start()
+    {
+        // Request saved state from server after game is ready
+        yield return new WaitForSeconds(0.5f);
+        if (NetworkManager.instance != null && NetworkManager.instance.IsConnected)
+            NetworkManager.instance.SendChestStateRequest(chestId);
+    }
+
+    void RaiseInventoryChanged()
+    {
+        OnInventoryChanged?.Invoke();
+        TryPushChestToServer();
+    }
+
+    void TryPushChestToServer()
+    {
+        if (_suppressNetworkPush) return;
+        if (NetworkManager.instance == null || NetworkManager.instance.playerId < 0) return;
+
+        if (_debouncedChestPush != null)
+            StopCoroutine(_debouncedChestPush);
+        _debouncedChestPush = StartCoroutine(CoDebouncedChestPush());
+    }
+
+    IEnumerator CoDebouncedChestPush()
+    {
+        float wait = Mathf.Max(0.02f, chestSyncDebounceSeconds);
+        yield return new WaitForSeconds(wait);
+        _debouncedChestPush = null;
+        if (_suppressNetworkPush) yield break;
+        if (NetworkManager.instance == null || NetworkManager.instance.playerId < 0) yield break;
+        NetworkManager.instance.SendChestStateSubmit(chestId, items);
+    }
+
+    /// <summary>联机打开箱子流程：在发请求前调用，空快照时允许本地 InitRandomItems。</summary>
+    public void MarkPendingInitLootIfNetwork()
+    {
+        _pendingInitLootIfEmpty = NetworkManager.instance != null && NetworkManager.instance.playerId >= 0;
+    }
+
+    /// <summary>服务端广播的快照；会覆盖本地列表。</summary>
+    public void ApplyNetworkSnapshot(System.Collections.Generic.IReadOnlyList<InventoryItem> snapshot, int _fromPlayerId)
+    {
+        if (_debouncedChestPush != null)
+        {
+            StopCoroutine(_debouncedChestPush);
+            _debouncedChestPush = null;
+        }
+
+        _suppressNetworkPush = true;
+        try
+        {
+            items.Clear();
+            if (snapshot != null)
+            {
+                foreach (var it in snapshot)
+                {
+                    if (it.itemId <= 0) continue;
+                    items.Add(it);
+                }
+            }
+
+            if (items.Count > 0)
+                _pendingInitLootIfEmpty = false;
+
+            if (_pendingInitLootIfEmpty && items.Count == 0)
+            {
+                _pendingInitLootIfEmpty = false;
+                InitRandomItemsOfflineOnly();
+            }
+        }
+        finally
+        {
+            _suppressNetworkPush = false;
+        }
+
+        OnInventoryChanged?.Invoke();
+    }
+
+    void InitRandomItemsOfflineOnly()
+    {
+        var rb = GetComponent<RewardBox>();
+        if (rb == null || rb.rewards == null) return;
+
+        _suppressNetworkPush = true;
+        try
+        {
+            ItemData[] itemData = rb.rewards;
+            for (int i = 0; i < itemData.Length; i++)
+            {
+                if (itemData[i] == null) continue;
+                AddItemInternalNoNetworkChain(itemData[i], 5);
+            }
+        }
+        finally
+        {
+            _suppressNetworkPush = false;
+        }
+        OnInventoryChanged?.Invoke();
+        TryPushChestToServer();
+    }
+
+    void AddItemInternalNoNetworkChain(ItemData item, int amount)
+    {
+        if (amount <= 0) return;
+        if (!item.isStackable)
+        {
+            for (int i = 0; i < amount; i++)
+            {
+                if (FindEmptySlot(item.width, item.height, out string gridType, out int gridIndex, out int x, out int y))
+                    items.Add(new InventoryItem(item.id, 1, x, y, gridType, gridIndex, false));
+                else break;
+            }
+            return;
+        }
+        for (int i = 0; i < items.Count && amount > 0; i++)
+        {
+            InventoryItem inv = items[i];
+            if (inv.itemId == item.id && inv.amount < item.maxStack)
+            {
+                int canAdd = item.maxStack - inv.amount;
+                int add = Mathf.Min(canAdd, amount);
+                inv.amount += add;
+                amount -= add;
+                items[i] = inv;
+            }
+        }
+        while (amount > 0)
+        {
+            int add = Mathf.Min(item.maxStack, amount);
+            if (FindEmptySlot(item.width, item.height, out string gridType, out int gridIndex, out int x, out int y))
+            {
+                items.Add(new InventoryItem(item.id, add, x, y, gridType, gridIndex, false));
+                amount -= add;
+            }
+            else break;
+        }
     }
 
     #region 公共接口（直接调用）
@@ -56,7 +216,7 @@ public class ChestInventory : MonoBehaviour
                 }
                 else break;
             }
-            OnInventoryChanged?.Invoke();
+            RaiseInventoryChanged();
             return;
         }
 
@@ -85,20 +245,20 @@ public class ChestInventory : MonoBehaviour
             }
             else break;
         }
-        OnInventoryChanged?.Invoke();
+        RaiseInventoryChanged();
     }
 
     private void AddItemAtPositionInternal(ItemData item, int amount, string gridType, int gridIndex, int x, int y, bool rotated)
     {
         InventoryItem newItem = new InventoryItem(item.id, amount, x, y, gridType, gridIndex, rotated);
         items.Add(newItem);
-        OnInventoryChanged?.Invoke();
+        RaiseInventoryChanged();
     }
 
     private void RemoveItemInternal(InventoryItem item)
     {
         items.Remove(item);
-        OnInventoryChanged?.Invoke();
+        RaiseInventoryChanged();
     }
 
     private void MoveItemInternal(InventoryItem item, string newGridType, int newGridIndex, int newX, int newY, bool rotated)
@@ -125,7 +285,7 @@ public class ChestInventory : MonoBehaviour
         newItem.y = newY;
         newItem.isRotated = rotated;
         items[idx] = newItem;
-        OnInventoryChanged?.Invoke();
+        RaiseInventoryChanged();
     }
     #endregion
 
@@ -189,13 +349,16 @@ public class ChestInventory : MonoBehaviour
     }
     #endregion
 
+    /// <summary> 本地生成战利品（无论联机/离线均会生成）。联机时第一人提交至服务器。</summary>
     public void InitRandomItems()
     {
-        ItemData[] itemData = GetComponent<RewardBox>().rewards;
+        var rb = GetComponent<RewardBox>();
+        if (rb == null || rb.rewards == null) return;
 
-        for (int i = 0; i < itemData.Length; i++)
+        for (int i = 0; i < rb.rewards.Length; i++)
         {
-            AddItem(itemData[i], 5);
+            if (rb.rewards[i] == null) continue;
+            AddItem(rb.rewards[i], 5);
         }
     }
 }

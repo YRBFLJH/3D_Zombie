@@ -4,11 +4,11 @@ using UnityEngine;
 
 public class AttackCollider : MonoBehaviour
 {
+    // Disabled: damage is now server-authoritative via HitResult messages.
+    // Server EnemyAI handles attack damage calculation and broadcasts results.
+
     void OnTriggerEnter(Collider other)
     {
-        if (other.gameObject.tag == "Player")
-        {
-            other.GetComponent<Player_State>().TakeDamage(10);
-        }
+        // No-op: server validates all damage
     }
 }

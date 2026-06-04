@@ -100,3 +100,4 @@ InitTestScene*.unity*
 
 # 忽略我的游戏资源(内存过大)
 /Assets/GameResouce/
+/.claude/

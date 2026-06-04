@@ -72,6 +72,15 @@ public class Player_State : MonoBehaviour
     [HideInInspector]
     public float maxThirst;
 
+    [HideInInspector] public float lastLoadTime = -99f; // 读档时间戳，用于短暂屏蔽服务器同步
+
+    [HideInInspector]
+    public bool isDead;
+    [SerializeField] private float respawnDelay = 5f;
+    [SerializeField] private int maxRespawns = 3;
+    [HideInInspector] public int respawnCount;
+    private Vector3 spawnPoint;
+
     private void Awake()
     {
         playerGetcomponent = GetComponent<Player_Getcomponent>();
@@ -83,79 +92,68 @@ public class Player_State : MonoBehaviour
         health = maxHealth = 100;
         satiety = maxSatiety = 100;
         thirst = maxThirst = 100;
+        spawnPoint = transform.position;
     }
 
     void Update()
     {
-        HeathRecover();
-        SatietyConsumption();
-        ThirstRecoverConsumption();
+        // Server-authoritative: stats driven by PlayerStatsSync, not local timers
     }
 
-    // 被攻击，由攻击方调用
+    // Server applies authoritative stats
+    public void ApplyServerStats(float hp, float maxHp, float food, float water, bool dead)
+    {
+        // 读档后短暂屏蔽服务器同步，避免刚加载的值被覆盖
+        if (Time.time - lastLoadTime < 2f) return;
+
+        maxHealth = maxHp;
+        health = hp;
+        maxSatiety = 100f;
+        satiety = food;
+        maxThirst = 100f;
+        thirst = water;
+
+        if (dead && !isDead)
+        {
+            isDead = true;
+            Player_Move playerMove = playerGetcomponent.playerMoveCS;
+            Player_Shoot playerShoot = playerGetcomponent.playerShootCS;
+            if (playerMove != null) playerMove.enabled = false;
+            if (playerShoot != null) playerShoot.enabled = false;
+            Player_Animator playerAnim = playerGetcomponent.playerAnimatorCS;
+            if (playerAnim != null) playerAnim.PlayDead();
+            if (DeathScreenUI.instance != null) DeathScreenUI.instance.Show(this);
+            Debug.Log("Player dead (server)");
+        }
+    }
+
+    // Damage may be applied by HitResult for visual feedback only
     public void TakeDamage(float damage)
     {
-        health -= damage;
-        if (health <= 0)
-        {
-            health = 0;
-            Dead();
-        }
+        if (isDead) return;
+        // Server is authoritative for death — client only updates display
     }
 
-    // 死亡
-    void Dead()
+    // Called when server sends PlayerRespawn
+    public void Respawn()
     {
-        health = maxHealth; //测试
-        Debug.Log("死亡");
-    }
-
-    void HeathRecover() // 自然回血
-    {
-        if (health > 0 && Time.time - lastHealthRecoverTime >= healthRecoverTime && health < maxHealth)
-        {
-            lastHealthRecoverTime = Time.time;
-            health += 1;
-        }
-    }
-
-    void SatietyConsumption() // 自然消耗饱食度
-    {
-        if (satiety > 0 && Time.time - lastSatietyConsumptionTime >= satietyConsumptionTime)
-        {
-            lastSatietyConsumptionTime = Time.time;
-            satiety -= 1;
-        }
-
-        if (satiety <= 0)
-        {
-            satiety = 0;
-            ContinueLossHP();
-        }
-    }
-
-    void ThirstRecoverConsumption() // 自然消耗饮水值
-    {
-        if (thirst > 0 && Time.time - lastThirstRecoverConsumption >= thirstRecoverConsumption)
-        {
-            lastThirstRecoverConsumption = Time.time;
-            thirst -= 1;
-        }
-
-        if (thirst <= 0)
-        {
-            thirst = 0;
-            ContinueLossHP();
-        }
-    }
-
-    void ContinueLossHP() // 持续扣血
-    {
-        if (health > 0 && Time.time - lastHealthConsumptionTime >= healthConsumptionTime)
-        {
-            lastHealthConsumptionTime = Time.time;
-            health -= 5;
-        }
+        isDead = false;
+        respawnCount++;
+        health = maxHealth;
+        satiety = maxSatiety;
+        thirst = maxThirst;
+        CharacterController cc = playerGetcomponent.characterController;
+        if (cc != null) cc.enabled = false;
+        transform.position = spawnPoint;
+        if (cc != null) cc.enabled = true;
+        Player_Move playerMove = playerGetcomponent.playerMoveCS;
+        Player_Shoot playerShoot = playerGetcomponent.playerShootCS;
+        if (playerMove != null) playerMove.enabled = true;
+        if (playerShoot != null) playerShoot.enabled = true;
+        Player_Animator playerAnim = playerGetcomponent.playerAnimatorCS;
+        if (playerAnim != null) playerAnim.PlayDead(false);
+        if (DeathScreenUI.instance != null) DeathScreenUI.instance.Hide();
+        Debug.Log("Player respawned (server)");
     }
 
     void UpdateHealthUI(float oldVal, float newVal)

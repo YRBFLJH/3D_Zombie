@@ -12,6 +12,7 @@ public class Enemy_State : MonoBehaviour
     // 动画结束调用
     void StartAttack()
     {
+        isAttack = true;
         isStopRotate = true;
     }
     void EndAttack()
@@ -45,6 +46,13 @@ public class Enemy_State : MonoBehaviour
 
     void DestroyDead()
     {
-        Destroy(gameObject.transform.parent.gameObject);
+        GameObject enemyRoot = gameObject.transform.parent != null ? gameObject.transform.parent.gameObject : gameObject;
+        Enemy_Controller controller = GetComponentInParent<Enemy_Controller>();
+        if (controller != null)
+        {
+            controller.OnEnemyKilled?.Invoke(controller);
+        }
+        NetworkManager.instance?.UnregisterEnemyByObject(enemyRoot);
+        Destroy(enemyRoot);
     }
 }

@@ -16,9 +16,26 @@ public struct InventoryItem : IEquatable<InventoryItem>
 
     public ItemData item => BackpackManage.GetItemData(itemId);
 
-    // 旋转时(isRotated为true)宽高互换
-    public int Width => isRotated ? item.height : item.width;
-    public int Height => isRotated ? item.width : item.height;
+    // 旋转时(isRotated为true)宽高互换（联机时若尚未注册 ItemData，避免空引用）
+    public int Width
+    {
+        get
+        {
+            ItemData d = BackpackManage.GetItemData(itemId);
+            if (d == null) return 1;
+            return isRotated ? d.height : d.width;
+        }
+    }
+
+    public int Height
+    {
+        get
+        {
+            ItemData d = BackpackManage.GetItemData(itemId);
+            if (d == null) return 1;
+            return isRotated ? d.width : d.height;
+        }
+    }
 
     public InventoryItem(int itemId, int amount, int x, int y, string gridType, int gridIndex, bool rotated = false)
     {

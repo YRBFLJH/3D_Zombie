@@ -18,7 +18,7 @@ public class Player_Move : MonoBehaviour
     public Transform virtualCameraFllow; //让摄像机能在玩家站立时旋转角度
     Transform virtualCamera;
 
-    private bool running;
+    [HideInInspector] public bool running;
     float playerSpeed;
     public float speed; //同步修改好的playerSpeed并根据奔跑状态切换
     private CharacterController characterController;
@@ -33,7 +33,8 @@ public class Player_Move : MonoBehaviour
     Vector3 moveDir;
     Quaternion targetRotation;
 
-    private Player_Shoot playerShoot;
+    [HideInInspector] public Player_Shoot playerShoot;
+    [HideInInspector] public Vector2 moveInput;
 
     float playerForwardY;
     float yoffset;
@@ -60,8 +61,23 @@ public class Player_Move : MonoBehaviour
         playerSpeed = 3f;
     }
 
-    void Update() 
-    {   
+    void Update()
+    {
+        // 任何UI打开时（箱子或背包）：显示光标，禁止移动/视角旋转
+        if (BackpackManage.currentOpenChest != null
+            || (BackpackManage.Instance != null && BackpackManage.Instance.showBackpack.activeSelf))
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+            if (playerAnimator != null)
+            {
+                playerAnimator.PlayMove(false);
+                playerAnimator.PlayRun(false);
+                playerAnimator.PlayIdle(true);
+            }
+            return;
+        }
+
         Move();
         CursorChange();
     }
@@ -105,6 +121,7 @@ public class Player_Move : MonoBehaviour
 
         float horizontal = Input.GetAxis("Horizontal");
         float vertical = Input.GetAxis("Vertical");
+        moveInput = new Vector2(horizontal, vertical);
 
         // 构建基于摄像机朝向的移动方向（只取水平方向，消除Y轴影响）
         cameraForward = virtualCamera.forward;

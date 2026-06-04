@@ -5,6 +5,7 @@ using UnityEngine;
 using Newtonsoft.Json;
 using System.Threading.Tasks;
 using System;
+using UnityEngine.SceneManagement;
 using Unity.VisualScripting;
 
 public class SaveManager : MonoBehaviour //常驻节点，处理保存、加载
@@ -12,6 +13,16 @@ public class SaveManager : MonoBehaviour //常驻节点，处理保存、加载
     public static SaveManager instance;
 
     public string sceneName;
+
+    // 游玩时间计时
+    [HideInInspector] public float totalPlayTime;
+
+    void Update()
+    {
+        // 仅在Game场景中计时（不受暂停影响）
+        if (sceneName == "Game")
+            totalPlayTime += Time.unscaledDeltaTime;
+    }
 
 
 
@@ -48,6 +59,10 @@ public class SaveManager : MonoBehaviour //常驻节点，处理保存、加载
         }
 
         DontDestroyOnLoad(this);
+
+        // 自行跟踪场景切换，不依赖外部设置
+        sceneName = SceneManager.GetActiveScene().name;
+        SceneManager.activeSceneChanged += (_, to) => { sceneName = to.name; };
     }
 
 
@@ -113,7 +128,7 @@ public class SaveManager : MonoBehaviour //常驻节点，处理保存、加载
             lastPlayTime = data.saveTime,
             sceneName = data.sceneName,
             playerLevel = data.player.level,
-            playDuration = 0f // 这里演示用，实际应该从全局计时器获取
+            playDuration = totalPlayTime
         };
     }
 

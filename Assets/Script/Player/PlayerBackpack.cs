@@ -10,10 +10,16 @@ public class PlayerBackpack : MonoBehaviour
     public List<InventoryItem> items = new List<InventoryItem>();
 
     public event System.Action OnInventoryChanged; // 背包物品改变时调用
+    public void InvokeInventoryChanged() => OnInventoryChanged?.Invoke();
 
     void Start()
     {
-        BackpackManage.Instance.InitComponent();
+        var player = GetComponent<Player>();
+        if (player == null || !player.isLocalPlayer) return;
+        if (BackpackManage.Instance != null)
+        {
+            BackpackManage.Instance.InitComponent();
+        }
     }
 
     #region 主方法（直接实现逻辑，不再区分服务器客户端）
@@ -78,9 +84,7 @@ public class PlayerBackpack : MonoBehaviour
                     invItem.amount += add;
                     amount -= add;
 
-                    // Struct 不能直接修改，必须 移除 → 修改 → 加回去
-                    items.RemoveAt(i);
-                    items.Insert(i, invItem);
+                    items[i] = invItem;
                     OnInventoryChanged?.Invoke();
 
                     // 加满了就退出
@@ -144,8 +148,7 @@ public class PlayerBackpack : MonoBehaviour
             InventoryItem newItem = item;
             newItem.amount--;
 
-            items.RemoveAt(index); // Struct 不能直接修改，必须 移除 → 修改 → 加回去
-            items.Insert(index, newItem);
+            items[index] = newItem;
             OnInventoryChanged?.Invoke();
         }
         else

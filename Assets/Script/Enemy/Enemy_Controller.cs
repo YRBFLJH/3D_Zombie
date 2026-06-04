@@ -9,6 +9,8 @@ public class Enemy_Controller : MonoBehaviour
     [HideInInspector]
     public Animator anim;
 
+    public System.Action<Enemy_Controller> OnEnemyKilled;
+
     // 状态机
     [HideInInspector]
     public bool isDead = false;
@@ -26,9 +28,15 @@ public class Enemy_Controller : MonoBehaviour
     public AttackState attackState;
     [HideInInspector]
     public DeadState deadState;
+    [HideInInspector]
+    public RangedAttackState rangedAttackState;
 
     [HideInInspector]
     public float rotationSpeed = 320f;
+    [HideInInspector] public bool aligningForAttackSwing;
+    [HideInInspector] public bool isLocalAI = true;
+    [HideInInspector] public int enemyId = -1;
+    [HideInInspector] public int remoteState = 0;
     Vector3 originalPosition; // 记录原始位置（以此格子为中心进行随机走动、拉拖区域）
 
     // 随机移动
@@ -44,7 +52,7 @@ public class Enemy_Controller : MonoBehaviour
     float repathDistance = 1.5f; // 目标移动大于于这个值时重新寻路
 
     // 探测玩家
-    float viewDistance = 8f;
+    public float viewDistance = 8f;
     float viewAngle = 50f; // 探测扇形区域的角度
     public LayerMask playerLayer; // 玩家所在层次
     public LayerMask obstacleLayer; // 障碍物所在层次
@@ -58,7 +66,8 @@ public class Enemy_Controller : MonoBehaviour
     [HideInInspector]
     public bool animIdle;
 
-    float health;
+    [HideInInspector] public float health;
+    public float maxHealth = 100f;
 
     void Awake()
     {
@@ -71,28 +80,43 @@ public class Enemy_Controller : MonoBehaviour
         runState = new RunState(stateMachine);
         attackState = new AttackState(stateMachine);
         deadState = new DeadState(stateMachine);
+        rangedAttackState = new RangedAttackState(stateMachine);
     }
 
     void Start()
     {
         anim = animator;
-
+        health = maxHealth;
         stateMachine.ChangeState(idleState); // 初始状态为站立
-
-        health = 100f;
     }
 
     void Update()
     {
-        //让状态机实时更新状态
-        stateMachine.UpdateState();
+        if (!isLocalAI)
+        {
+            if (hasRemoteTarget && !isDead)
+            {
+                transform.position = Vector3.Lerp(transform.position, targetPos, Time.deltaTime * 12f);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * 12f);
+            }
 
-        // 实时探测是否发现玩家
+            if (isDead)
+            {
+                anim.SetBool("isRun", false);
+                anim.SetBool("isWalk", false);
+                anim.SetBool("isIdle", false);
+                return;
+            }
+            anim.SetBool("isIdle", remoteState == 0 || remoteState == 3);
+            anim.SetBool("isWalk", remoteState == 1);
+            anim.SetBool("isRun", remoteState == 2);
+            return;
+        }
+
+        stateMachine.UpdateState();
         AutoFindPlayer();
 
-        // 如果玩家在探测范围内，开始寻路移动
         if (target != null) StartMoveByFindPlayer();
-        // 否则定时随机移动（巡逻）
         else
         {
             if (Time.time >= lastRandomMoveTime + randomMoveTime)
@@ -102,8 +126,7 @@ public class Enemy_Controller : MonoBehaviour
             }
             MoveAlongPath();
         }
-        
-        // 通过速度更新状态
+
         UpdateStateBySpeed();
 
         if (isDead)
@@ -116,11 +139,6 @@ public class Enemy_Controller : MonoBehaviour
         anim.SetBool("isRun", animRun);
         anim.SetBool("isWalk", animWalk);
         anim.SetBool("isIdle", animIdle);
-
-        //Debug可视化路径、终点（测试用）
-        Debug.DrawLine(transform.position + Vector3.up, endPosition + Vector3.up, Color.cyan, 0.5f);
-        Debug.DrawLine(endPosition + Vector3.up * 0.5f + Vector3.left * 0.3f, endPosition + Vector3.up * 0.5f + Vector3.right * 0.3f, Color.magenta, 0.5f);
-        Debug.DrawLine(endPosition + Vector3.up * 0.5f + Vector3.back * 0.3f, endPosition + Vector3.up * 0.5f + Vector3.forward * 0.3f, Color.magenta, 0.5f);
     }
 
     // 开始寻路移动
@@ -397,13 +415,57 @@ public class Enemy_Controller : MonoBehaviour
 
     public void TakeDamage(float damage)
     {
+        if (isDead) return;
+        health = Mathf.Max(0, health - damage);
         if (health <= 0)
         {
             isDead = true;
             path = null;
             target = null;
+            PlayDeadTrigger();
+            stateMachine.ChangeState(deadState);
+        }
+    }
+
+    public bool IsFacingTargetForAttack()
+    {
+        if (target == null) return false;
+        Vector3 dirToTarget = (target.position - transform.position).normalized;
+        float angle = Vector3.Angle(transform.forward, dirToTarget);
+        float threshold = 22f;
+        return angle <= threshold;
+    }
+
+    public void UpdateRemoteState(Vector3 pos, Quaternion rot, float spd, int stateId, bool dead, bool attacking)
+    {
+        targetPos = pos;
+        targetRot = rot;
+        hasRemoteTarget = true;
+        speed = spd;
+        remoteState = stateId;
+        isDead = dead;
+
+        if (dead)
+        {
+            if (!isDeadPrev)
+            {
+                anim.SetTrigger("isDead");
+                isDeadPrev = true;
+            }
             return;
         }
-        health = Mathf.Max(0, health - damage);
+        isDeadPrev = false;
+
+        if (attacking && !isAttackPrev)
+        {
+            anim.SetTrigger("isAttack");
+        }
+        isAttackPrev = attacking;
     }
+
+    private Vector3 targetPos;
+    private Quaternion targetRot;
+    private bool hasRemoteTarget = false;
+    private bool isDeadPrev = false;
+    private bool isAttackPrev = false;
 }

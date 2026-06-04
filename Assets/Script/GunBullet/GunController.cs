@@ -29,9 +29,6 @@ public class GunController : MonoBehaviour
         playerShoot.SetCurrentGun(this);
         UpdateState();
         playerShoot.ShowHideBulletUI();
-
-        if (playerShoot.rightBullet > 0 && playerShoot.leftBullet < gunData.shootMagazineSize)
-            playerShoot.Reload();
     }
 
     void OnEnable()
@@ -39,9 +36,6 @@ public class GunController : MonoBehaviour
         if (ownPlayer == null) return;
         UpdateState();
         playerShoot.ShowHideBulletUI();
-
-        if (playerShoot.rightBullet > 0 && playerShoot.leftBullet < gunData.shootMagazineSize)
-            playerShoot.Reload();
     }
 
     void OnDisable()

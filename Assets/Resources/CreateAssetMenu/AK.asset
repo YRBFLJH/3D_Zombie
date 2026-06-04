@@ -16,13 +16,18 @@ MonoBehaviour:
   gunIcon: {fileID: 0}
   bulletPrefab: {fileID: 9116193038523873474, guid: a95a7e8cb898b7e43ae3ee1c64245225, type: 3}
   isAutomatic: 1
+  weaponType: 0
   damage: 10
-  fireRate: 0.2
+  fireRate: 0.11
   range: 0
   shootMagazineSize: 30
   allMagazineSize: 180
   reloadTime: 0
   recoilForce: 0
+  pelletsPerShot: 1
+  spreadAngle: 0
+  adsZoomFOV: 40
+  isBoltAction: 0
   holeEnemy: {fileID: 8597536469226666553, guid: a2bf8a0b83fd0294ea79cddde1aacba2, type: 3}
   holeBulliding: {fileID: 2762120737005104760, guid: 70d65e071aecfa54991a33d3eeb6aecd, type: 3}
   shootSound: {fileID: 0}

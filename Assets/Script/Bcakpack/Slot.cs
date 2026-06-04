@@ -30,39 +30,64 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
 
     public float cellWidth, cellHeight;    // 格子宽高，调用GridLayoutGroup中的cellSize
 
+    bool _visualsReady;
+
     // 外部可覆盖的事件（用于箱子）
     public Action<Slot, PointerEventData> onLeftClick;
     public Action<Slot, PointerEventData> onBeginDragExternal;
     public Action<Slot, PointerEventData> onDragExternal;
     public Action<Slot, PointerEventData> onEndDragExternal;
 
+    float _backpackDragProbeTime = -999f;
+    Vector2 _backpackDragProbeLastMouse;
+    Slot _backpackCachedSlotUnderMouse;
+    const float BackpackDragProbeSqrDist = 25f;
+
     void Awake()
     {
-        // 控制初始状态
+        EnsureVisualsInitialized();
+    }
+
+    void OnEnable()
+    {
+        EnsureVisualsInitialized();
+    }
+
+    /// <summary>挂在未激活面板下时 Awake 可能尚未执行，需在首次绘制前完成绑定。</summary>
+    void EnsureVisualsInitialized()
+    {
+        if (_visualsReady) return;
+        if (dragFllowImage == null || highlightImage == null || selectBorder == null || icon == null || count == null)
+            return;
+
         dragFllowImage.gameObject.SetActive(false);
         highlightImage.gameObject.SetActive(false);
         selectBorder.gameObject.SetActive(false);
         icon.enabled = false;
-        
-        // 获取组件
+
         grid = GetComponentInParent<GridLayoutGroup>();
+        if (grid == null) return;
+
         iconRect = icon.GetComponent<RectTransform>();
         dragRect = dragFllowImage.GetComponent<RectTransform>();
         selfImage = GetComponent<Image>();
+        if (iconRect == null || dragRect == null || selfImage == null) return;
 
-
-        // 获取单元格宽高，以便拉伸icon
         cellWidth = grid.cellSize.x;
         cellHeight = grid.cellSize.y;
 
-        // 关闭射线探测，防干扰
         icon.raycastTarget = false;
         count.raycastTarget = false;
         selectBorder.raycastTarget = false;
+
+        _visualsReady = true;
     }
 
     public void UpdateUI()
     {
+        EnsureVisualsInitialized();
+        if (!_visualsReady) return;
+
         icon.enabled = false;
         count.text = "";
 
@@ -98,6 +123,8 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
 
     public void SetHighlight(bool active, Color color) // 高亮格子（BackpackManage.cs中判定）
     {
+        EnsureVisualsInitialized();
+        if (!_visualsReady || highlightImage == null) return;
         highlightImage.gameObject.SetActive(active);
         if (active) highlightImage.color = color;
     }
@@ -109,8 +136,11 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
             if (onLeftClick != null)
                 onLeftClick(this, eventData);
             else if (occupiedBy.item != null)
-                BackpackManage.Instance.SelectItem(occupiedBy);
-            else
+            {
+                if (BackpackManage.Instance != null)
+                    BackpackManage.Instance.SelectItem(occupiedBy);
+            }
+            else if (BackpackManage.Instance != null)
                 BackpackManage.Instance.SelectItem(new InventoryItem());
         }
         else if (eventData.button == PointerEventData.InputButton.Right)
@@ -127,9 +157,14 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
             onBeginDragExternal(this, eventData);
         else
         {
-            BackpackManage.Instance.StartDrag(occupiedBy); //对应BackpackManage.cs的拖拽
-
-            selfImage.raycastTarget = false;
+            if (BackpackManage.Instance != null)
+            {
+                _backpackDragProbeTime = -999f;
+                _backpackDragProbeLastMouse = Input.mousePosition;
+                _backpackCachedSlotUnderMouse = null;
+                BackpackManage.Instance.StartDrag(occupiedBy); //对应BackpackManage.cs的拖拽
+                selfImage.raycastTarget = false;
+            }
         }
     }
 
@@ -142,12 +177,23 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
 
         else
         {
+            if (BackpackManage.Instance == null) return;
             // 显示拖拽图标
             dragFllowImage.gameObject.SetActive(true);
             dragFllowImage.sprite = occupiedBy.item.icon;
             dragFllowImage.transform.position = Input.mousePosition;
 
-            var target = BackpackManage.Instance.GetSlotUnderMouse(eventData);
+            float interval = BackpackManage.Instance.DragProbeInterval;
+            bool heavy = Time.unscaledTime - _backpackDragProbeTime >= interval
+                || Vector2.SqrMagnitude((Vector2)Input.mousePosition - _backpackDragProbeLastMouse) > BackpackDragProbeSqrDist;
+            if (heavy)
+            {
+                _backpackDragProbeTime = Time.unscaledTime;
+                _backpackDragProbeLastMouse = Input.mousePosition;
+                _backpackCachedSlotUnderMouse = BackpackManage.Instance.GetSlotUnderMouse(eventData);
+            }
+
+            var target = _backpackCachedSlotUnderMouse;
             float w = target != null ? target.cellWidth : cellWidth;
             float h = target != null ? target.cellHeight : cellHeight;
 
@@ -166,14 +212,14 @@ public class Slot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDra
             onEndDragExternal(this, eventData);
         else
         {
-            // 隐藏拖拽图标、恢复鼠标可见、清空选中格子
             dragFllowImage.gameObject.SetActive(false);
-            BackpackManage.Instance.SelectItem(new InventoryItem());
             Cursor.visible = true;
-
-            BackpackManage.Instance.EndDrag(occupiedBy, eventData); // 对应BackpackManage.cs的拖拽
-
             selfImage.raycastTarget = true;
+            if (BackpackManage.Instance != null)
+            {
+                BackpackManage.Instance.SelectItem(new InventoryItem());
+                BackpackManage.Instance.EndDrag(occupiedBy, eventData); // 对应BackpackManage.cs的拖拽
+            }
         }
     }
 }

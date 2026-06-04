@@ -5,6 +5,12 @@ using UnityEngine.UI;
 
 public class ChestUI : MonoBehaviour
 {
+    static readonly Vector2Int[] s_canPlaceNeighborOffsets = new Vector2Int[]
+    {
+        new Vector2Int(0, 0), new Vector2Int(1, 0), new Vector2Int(1, 1), new Vector2Int(0, 1), new Vector2Int(-1, 1),
+        new Vector2Int(-1, 0), new Vector2Int(-1, -1), new Vector2Int(0, -1), new Vector2Int(1, -1)
+    };
+
     [Header("箱子引用")]
     public ChestInventory chestInventory;
     public GameObject chestPanel;
@@ -30,10 +36,18 @@ public class ChestUI : MonoBehaviour
     private Slot lastHightSlot;
 
     private Vector2 lastMousePos;
-    private float checkInterval = 0.05f;
-    private float lastCheckTime;
+    [SerializeField] float dragProbeInterval = 0.066f;
+    private float lastDragProbeTime = -999f;
+    private const float DragProbeSqrDist = 25f;
+    private Slot _cachedSlotUnderMouse;
 
     private InventoryItem selectedItem;
+
+    bool _refreshQueued;
+
+    Slot[,] _lastHighlightSigGrid;
+    int _lastHighlightSigX, _lastHighlightSigY;
+    bool _lastHighlightSigOk;
 
     void Awake()
     {
@@ -46,13 +60,37 @@ public class ChestUI : MonoBehaviour
         if (chestInventory == null)
             chestInventory = GetComponent<ChestInventory>();
         InitChestGrids();
-        chestInventory.OnInventoryChanged += RefreshUI;
+        chestInventory.OnInventoryChanged += QueueRefreshFromInventory;
     }
 
     void OnDestroy()
     {
         if (chestInventory != null)
-            chestInventory.OnInventoryChanged -= RefreshUI;
+            chestInventory.OnInventoryChanged -= QueueRefreshFromInventory;
+    }
+
+    void LateUpdate()
+    {
+        if (!_refreshQueued) return;
+        _refreshQueued = false;
+        PerformChestGridRefresh();
+    }
+
+    void Update()
+    {
+        // 按 Escape 或 B 关闭箱子面板
+        if (chestPanel != null && chestPanel.activeSelf)
+        {
+            if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.B))
+            {
+                CloseChest();
+            }
+        }
+    }
+
+    void QueueRefreshFromInventory()
+    {
+        _refreshQueued = true;
     }
 
     private void InitChestGrids()
@@ -127,6 +165,10 @@ public class ChestUI : MonoBehaviour
         slot.dragFllowImage.gameObject.SetActive(true);
         slot.dragFllowImage.sprite = slot.occupiedBy.item.icon;
         Cursor.visible = false;
+        lastDragProbeTime = -999f;
+        lastMousePos = Input.mousePosition;
+        _cachedSlotUnderMouse = null;
+        _lastHighlightSigGrid = null;
     }
 
     private void OnSlotDrag(Slot slot, PointerEventData eventData)
@@ -134,12 +176,20 @@ public class ChestUI : MonoBehaviour
         if (draggingItem.item == null) return;
         slot.dragFllowImage.transform.position = Input.mousePosition;
 
-        Slot target = GetSlotUnderMouse(eventData);
+        bool heavy = Time.unscaledTime - lastDragProbeTime >= dragProbeInterval
+            || Vector2.SqrMagnitude((Vector2)Input.mousePosition - lastMousePos) > DragProbeSqrDist;
+        if (heavy)
+        {
+            lastMousePos = Input.mousePosition;
+            lastDragProbeTime = Time.unscaledTime;
+            _cachedSlotUnderMouse = GetSlotUnderMouse(eventData);
+            UpdateHighlightAfterProbe(_cachedSlotUnderMouse, eventData);
+        }
+
+        Slot target = _cachedSlotUnderMouse;
         float w = target != null ? target.cellWidth : slot.cellWidth;
         float h = target != null ? target.cellHeight : slot.cellHeight;
         slot.dragRect.sizeDelta = new Vector2(draggingItem.Width * w, draggingItem.Height * h);
-
-        UpdateHighlightFromDrag(eventData);
     }
 
     private void OnSlotEndDrag(Slot slot, PointerEventData eventData)
@@ -156,13 +206,8 @@ public class ChestUI : MonoBehaviour
             BackpackManage.Instance.UpdateBackpack();
     }
 
-    private void UpdateHighlightFromDrag(PointerEventData eventData)
+    void UpdateHighlightAfterProbe(Slot targetSlot, PointerEventData eventData)
     {
-        if (Time.time - lastCheckTime < checkInterval && Vector2.Distance(Input.mousePosition, lastMousePos) < 5f) return;
-        lastMousePos = Input.mousePosition;
-        lastCheckTime = Time.time;
-
-        Slot targetSlot = GetSlotUnderMouse(eventData);
         if (targetSlot != null)
         {
             lastHightSlot = targetSlot;
@@ -179,6 +224,14 @@ public class ChestUI : MonoBehaviour
     private void UpdateHighlight(InventoryItem item, Slot slot)
     {
         bool canPlace = CanPlace(item, slot.x, slot.y, slot.parentGrid, out int placeX, out int placeY);
+        if (slot.parentGrid == _lastHighlightSigGrid && placeX == _lastHighlightSigX && placeY == _lastHighlightSigY && canPlace == _lastHighlightSigOk)
+            return;
+
+        _lastHighlightSigGrid = slot.parentGrid;
+        _lastHighlightSigX = placeX;
+        _lastHighlightSigY = placeY;
+        _lastHighlightSigOk = canPlace;
+
         canPlaceAtHighlight = canPlace;
         highlightGrid = slot.parentGrid;
         highlightX = placeX;
@@ -197,13 +250,7 @@ public class ChestUI : MonoBehaviour
         int startY = Mathf.Max(0, centerY - h + 1);
         int endY = Mathf.Min(gh - h, centerY);
 
-        Vector2Int[] order = new Vector2Int[]
-        {
-            new(0,0), new(1,0), new(1,1), new(0,1), new(-1,1),
-            new(-1,0), new(-1,-1), new(0,-1), new(1,-1)
-        };
-
-        foreach (var offset in order)
+        foreach (var offset in s_canPlaceNeighborOffsets)
         {
             int x = centerX + offset.x;
             int y = centerY + offset.y;
@@ -256,6 +303,7 @@ public class ChestUI : MonoBehaviour
         highlightGrid = null;
         canPlaceAtHighlight = false;
         lastHightSlot = null;
+        _lastHighlightSigGrid = null;
     }
     #endregion
 
@@ -358,8 +406,12 @@ public class ChestUI : MonoBehaviour
         }
         else
         {
-            chestInventory.RemoveItem(item);
-            DropItemToWorld(item);
+            // 拖到无效区域：取消操作，物品留在原位
+            ClearHighlightExternal();
+            ClearHighlight();
+            highlightGrid = null;
+            canPlaceAtHighlight = false;
+            lastHightSlot = null;
         }
         RefreshUI();
     }
@@ -372,9 +424,19 @@ public class ChestUI : MonoBehaviour
     #endregion
 
     #region UI 刷新与工具
+    /// <summary>立即重绘（打开箱子、外部调用）；会取消本帧合并刷新。</summary>
     public void RefreshUI()
     {
+        _refreshQueued = false;
+        PerformChestGridRefresh();
+    }
+
+    void PerformChestGridRefresh()
+    {
         if (chestInventory == null) return;
+        // 面板未打开时子物体 Slot 可能尚未 Awake，此时刷新会空引用；数据已在 ChestInventory.items 中，打开箱子时会再 RefreshUI
+        if (chestPanel != null && !chestPanel.activeInHierarchy)
+            return;
         ClearAllGrids();
         foreach (var item in chestInventory.items)
         {
@@ -442,16 +504,19 @@ public class ChestUI : MonoBehaviour
         RefreshUI();
         BackpackManage.currentOpenChest = this;
 
-        BackpackManage.Instance.InputBOpen();
-        RectTransform rect = BackpackManage.Instance.GetComponent<RectTransform>();
+        if (BackpackManage.Instance != null)
+        {
+            // 显式打开背包（避免 toggle 状态不同步）
+            BackpackManage.Instance.ShowBackpackPanel();
+            RectTransform rect = BackpackManage.Instance.GetComponent<RectTransform>();
+            rect.localScale = new Vector3(0.65f, 0.65f, 0.65f);
+            rect.offsetMin = new Vector2(-550, rect.offsetMin.y);
+            rect.offsetMax = new Vector2(-550, rect.offsetMax.y);
+        }
 
-        // 修改缩放
-        rect.localScale = new Vector3(0.65f, 0.65f, 0.65f);
-
-        // 修改左右位置（锚点为父物体边界时，offsetMin.x 为左边距，offsetMax.x 为右边距）
-        // 例如：左边距 100，右边距 200
-        rect.offsetMin = new Vector2(-550, rect.offsetMin.y);   // 设置左边缘距离父物体左边的距离
-        rect.offsetMax = new Vector2(-550, rect.offsetMax.y);
+        // 显示鼠标光标
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
     }
 
     public void CloseChest()
@@ -461,16 +526,19 @@ public class ChestUI : MonoBehaviour
         if (BackpackManage.currentOpenChest == this)
             BackpackManage.currentOpenChest = null;
 
-        BackpackManage.Instance.InputBOpen();
-        RectTransform rect = BackpackManage.Instance.GetComponent<RectTransform>();
+        if (BackpackManage.Instance != null)
+        {
+            // 关闭背包
+            BackpackManage.Instance.HideBackpackPanel();
+            RectTransform rect = BackpackManage.Instance.GetComponent<RectTransform>();
+            rect.localScale = new Vector3(1, 1, 1);
+            rect.offsetMin = new Vector2(0, rect.offsetMin.y);
+            rect.offsetMax = new Vector2(0, rect.offsetMax.y);
+        }
 
-        // 修改缩放
-        rect.localScale = new Vector3(1, 1, 1);
-
-        // 修改左右位置（锚点为父物体边界时，offsetMin.x 为左边距，offsetMax.x 为右边距）
-        // 例如：左边距 100，右边距 200
-        rect.offsetMin = new Vector2(0, rect.offsetMin.y);   // 设置左边缘距离父物体左边的距离
-        rect.offsetMax = new Vector2(0, rect.offsetMax.y);
+        // 隐藏鼠标光标
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
     }
     #endregion
 

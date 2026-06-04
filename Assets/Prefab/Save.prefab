@@ -67,8 +67,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: "\u5B58\u6863\uFF1A1"
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: ebf96d349c9c6084fae1df4b39303688, type: 2}
-  m_sharedMaterial: {fileID: 5416025369095298539, guid: ebf96d349c9c6084fae1df4b39303688, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 44176f4462ba84143bb1754e93213b3b, type: 2}
+  m_sharedMaterial: {fileID: 6533174379241672300, guid: 44176f4462ba84143bb1754e93213b3b, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -146,7 +146,6 @@ GameObject:
   - component: {fileID: 8339333708050081407}
   - component: {fileID: 1246622420487838369}
   - component: {fileID: 2863019866868039728}
-  - component: {fileID: 7163847494107713897}
   m_Layer: 5
   m_Name: Save
   m_TagString: Untagged
@@ -258,21 +257,6 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls: []
---- !u!114 &7163847494107713897
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2299391411520890062}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 92ec9877efe0c4342a0cf652d0ec7479, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  textId: {fileID: 8649621333934547865}
-  textLastSaveTime: {fileID: 5988575970480091613}
-  textAllPlayTime: {fileID: 2428055199706322133}
 --- !u!1 &4954316212956268816
 GameObject:
   m_ObjectHideFlags: 0
@@ -340,8 +324,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: "2026.3.23\uFF0C12\uFF1A45"
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: ebf96d349c9c6084fae1df4b39303688, type: 2}
-  m_sharedMaterial: {fileID: 5416025369095298539, guid: ebf96d349c9c6084fae1df4b39303688, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 44176f4462ba84143bb1754e93213b3b, type: 2}
+  m_sharedMaterial: {fileID: 6533174379241672300, guid: 44176f4462ba84143bb1754e93213b3b, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -474,8 +458,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: "22\uFF1A22"
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: ebf96d349c9c6084fae1df4b39303688, type: 2}
-  m_sharedMaterial: {fileID: 5416025369095298539, guid: ebf96d349c9c6084fae1df4b39303688, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 44176f4462ba84143bb1754e93213b3b, type: 2}
+  m_sharedMaterial: {fileID: 6533174379241672300, guid: 44176f4462ba84143bb1754e93213b3b, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []

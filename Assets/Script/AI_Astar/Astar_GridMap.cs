@@ -37,7 +37,7 @@ public class Astar_GridMap : MonoBehaviour
             {
                 Vector3 worldPos = startPos + new Vector3(x * cellSize + cellSize * 0.5f, 1f, y * cellSize + cellSize * 0.5f);
 
-                bool walkable = !(Physics.OverlapBox(worldPos, new Vector3(cellSize * 0.4f, 1f, cellSize * 0.4f), Quaternion.identity, Obstacle).Length > 0);
+                bool walkable = !(Physics.OverlapBox(worldPos, new Vector3(cellSize * 0.5f, 1f, cellSize * 0.5f), Quaternion.identity, Obstacle).Length > 0);
 
                 gridMap[x, y] = new Astar_Node()
                 {

@@ -7,6 +7,7 @@ public class Player_Animator : MonoBehaviour
     private Animator anim;
 
     Player_Shoot shoot;
+    Player player;
 
     private readonly int idleHash = Animator.StringToHash("isIdle");
     private readonly int movingHash = Animator.StringToHash("isMoving");
@@ -20,6 +21,10 @@ public class Player_Animator : MonoBehaviour
     private float ik_EyeWeight;
 
     private Vector3 lookAtPosition;  // 注视位置（世界坐标）
+    private Vector3 remoteLookDirection = Vector3.forward;
+    private Vector3 smoothedRemoteLookDirection = Vector3.forward;
+    private bool hasRemoteLookDirection = false;
+    [SerializeField] private float remoteLookSmoothSpeed = 30f;
 
     public float cameraRightOffset;
 
@@ -27,21 +32,66 @@ public class Player_Animator : MonoBehaviour
     {
         anim = GetComponent<Animator>();
         shoot = GetComponent<Player_Shoot>();
+
+        player = GetComponent<Player>();
     }
 
     void Update()
     {
-        // 计算当前注视目标点（例如摄像机前方 4 米处 + 右侧偏移）
-        lookAtPosition = Camera.main.transform.position 
-                         + Camera.main.transform.forward * 4f 
-                         + Camera.main.transform.right * cameraRightOffset;
+        bool isLocal = player != null && player.isLocalPlayer;
+
+        if (isLocal && Camera.main != null)
+        {
+            // 本地玩家：继续使用本地相机方向作为IK目标
+            lookAtPosition = Camera.main.transform.position
+                             + Camera.main.transform.forward * 4f
+                             + Camera.main.transform.right * cameraRightOffset;
+        }
+        else
+        {
+            // 远端玩家：优先使用网络同步过来的视线方向
+            Vector3 basePos = transform.position + Vector3.up * 1.5f;
+            if (hasRemoteLookDirection)
+            {
+                float t = Mathf.Clamp01(Time.deltaTime * remoteLookSmoothSpeed);
+                smoothedRemoteLookDirection = Vector3.Slerp(smoothedRemoteLookDirection, remoteLookDirection, t);
+            }
+            else
+            {
+                smoothedRemoteLookDirection = transform.forward;
+            }
+
+            Vector3 forward = smoothedRemoteLookDirection;
+            Vector3 right = transform.right;
+            lookAtPosition = basePos + forward * 4f + right * cameraRightOffset;
+        }
     }
+
+    private int ikDebugFrame = 0;
 
     void OnAnimatorIK(int layerIndex)
     {
-        Vector3 targetPos = lookAtPosition;
+        ikDebugFrame++;
+        bool isLocal = player != null && player.isLocalPlayer;
+        if (!isLocal && ikDebugFrame % 120 == 1)
+        {
+            Debug.Log($"[IK Debug] OnAnimatorIK called! layer={layerIndex} lookAt={lookAtPosition} " +
+                      $"hasRemote={hasRemoteLookDirection} remoteDir={remoteLookDirection}");
+        }
 
-        // 防止目标点未初始化时出现异常（例如刚生成时）
+        Vector3 targetPos;
+        if (!isLocal && hasRemoteLookDirection)
+        {
+            // Remote: compute look target directly from synced direction
+            Vector3 headPos = anim.GetBoneTransform(HumanBodyBones.Head)?.position
+                              ?? (transform.position + Vector3.up * 1.5f);
+            targetPos = headPos + smoothedRemoteLookDirection * 4f;
+        }
+        else
+        {
+            targetPos = lookAtPosition;
+        }
+
         if (targetPos == Vector3.zero)
             targetPos = transform.position + transform.forward * 4f;
 
@@ -49,9 +99,9 @@ public class Player_Animator : MonoBehaviour
         if (layerIndex == 0)
         {
             ik_AllWeight = 0.8f;
-            ik_BodyWeight = 0f;
-            ik_HeadWeight = 0.1f;
-            ik_EyeWeight = 0.1f;
+            ik_BodyWeight = 0.2f;
+            ik_HeadWeight = 0.5f;
+            ik_EyeWeight = 0.4f;
         }
         else if (layerIndex == 1)
         {
@@ -72,4 +122,16 @@ public class Player_Animator : MonoBehaviour
     public void PlayArmed(bool isArmed) => anim.SetBool(armedHash, isArmed);
     public void PlayAim(bool isAiming) => anim.SetBool(aimHash, isAiming);
     public void PlayReload() => anim.SetTrigger("canReload");
+    public void PlayDead(bool isDead = true) => anim.SetBool("isDead", isDead);
+
+    public void SetRemoteLookDirection(Vector3 lookDir)
+    {
+        if (lookDir.sqrMagnitude < 0.0001f) return;
+        remoteLookDirection = lookDir.normalized;
+        if (!hasRemoteLookDirection)
+        {
+            smoothedRemoteLookDirection = remoteLookDirection;
+        }
+        hasRemoteLookDirection = true;
+    }
 }
