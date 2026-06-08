@@ -13,7 +13,9 @@ return {
         --  4. Edit ANY text above -> F5 -> text changes instantly
         -- ============================================================
 
-         { btn = "5", content = "新活动5" },
-         { btn = "6", content = "新活动6" },
+        { btn = "5", content = "新活动5" },
+       { btn = "6", content = "新活动6" },
+
+
     },
 }

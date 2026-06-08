@@ -38,6 +38,8 @@ public class LoginUI : MonoBehaviour
         lobbyPanel?.SetActive(false);
 
         if (errorText != null) errorText.gameObject.SetActive(false);
+
+        AudioManager.Instance?.PlayThemeMusic();
     }
 
     void OnDestroy()
@@ -89,18 +91,28 @@ public class LoginUI : MonoBehaviour
     {
         if (resp.Success)
         {
-            loginPanel?.SetActive(false);
-            lobbyPanel?.SetActive(true);
-
-            var lobbyUI = FindObjectOfType<LobbyUI>();
-            if (lobbyUI != null)
-                lobbyUI.RefreshRoomList();
+            // Defer by one frame so LobbyUI.Start() runs before we request room list.
+            // Otherwise the server's initial RoomListResponse (sent right after LoginResponse)
+            // arrives before LobbyUI callbacks are set up and is silently dropped.
+            StartCoroutine(ShowLobbyNextFrame());
         }
         else
         {
             if (!string.IsNullOrEmpty(resp.Error))
                 ShowError(resp.Error);
         }
+    }
+
+    System.Collections.IEnumerator ShowLobbyNextFrame()
+    {
+        yield return null; // wait one frame
+
+        loginPanel?.SetActive(false);
+        lobbyPanel?.SetActive(true);
+
+        var lobbyUI = FindObjectOfType<LobbyUI>();
+        if (lobbyUI != null)
+            lobbyUI.RefreshRoomList();
     }
 
     void ShowError(string msg)

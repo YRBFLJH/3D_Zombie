@@ -232,6 +232,10 @@ public class NetworkManager : MonoBehaviour
                 HandleShootEvent(msg.ShootEvent);
                 break;
 
+            case GameMessage.PayloadOneofCase.ReloadEvent:
+                HandleReloadEvent(msg.ReloadEvent);
+                break;
+
             case GameMessage.PayloadOneofCase.HitResult:
                 HandleHitResult(msg.HitResult);
                 break;
@@ -354,6 +358,15 @@ public class NetworkManager : MonoBehaviour
 
         GameMessage msg = new GameMessage();
         msg.ShootRequest = req;
+        SendMessageToServer(msg.ToByteArray());
+    }
+
+    public void SendReloadEvent()
+    {
+        if (playerId == -1) return;
+
+        GameMessage msg = new GameMessage();
+        msg.ReloadEvent = new ReloadEvent { PlayerId = playerId };
         SendMessageToServer(msg.ToByteArray());
     }
 
@@ -573,6 +586,8 @@ public class NetworkManager : MonoBehaviour
         Vector3 firePos = new Vector3(shoot.FirePosX, shoot.FirePosY, shoot.FirePosZ);
         Vector3 dir = new Vector3(shoot.DirX, shoot.DirY, shoot.DirZ);
 
+        AudioManager.Instance?.PlayShootSound(firePos);
+
         Player_Shoot remoteShoot = players[shooterId].GetComponent<Player_Shoot>();
         if (remoteShoot != null && remoteShoot.currentGun != null)
         {
@@ -586,6 +601,15 @@ public class NetworkManager : MonoBehaviour
             remoteHandItem.SetArmedStateByNetwork(true);
             remoteHandItem.PlayRemoteShootEffect(firePos, dir);
         }
+    }
+
+    private void HandleReloadEvent(ReloadEvent reload)
+    {
+        int playerId = reload.PlayerId;
+        if (playerId == this.playerId) return;
+        if (!players.ContainsKey(playerId)) return;
+
+        AudioManager.Instance?.PlayReloadSound(players[playerId].transform.position);
     }
 
     private void HandleHitResult(HitResult hit)

@@ -125,6 +125,7 @@ public class Player_Shoot : MonoBehaviour
                 lastBoltTime = Time.time + currentGun.gunData.fireRate;
 
             lastShootTime = Time.time;
+            AudioManager.Instance?.PlayShootSound(firePoint.position);
             NetworkManager.instance?.SendShootRequest(firePoint.position, fireShootDir);
         }
         else if (Input.GetMouseButton(0) && leftBullet <= 0) // 子弹为0时射击播放空壳音效
@@ -291,6 +292,8 @@ public class Player_Shoot : MonoBehaviour
     {
         isReloading = true;
         playerAnimator.PlayReload();
+        AudioManager.Instance?.PlayReloadSound(transform.position);
+        NetworkManager.instance?.SendReloadEvent();
     }
 
     // 结束换弹(换弹动画结束时调用的帧事件)

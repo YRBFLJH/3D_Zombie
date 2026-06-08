@@ -323,6 +323,7 @@ public class LobbyUI : MonoBehaviour
                 NetworkManager.instance.SendInputLoop());
         }
 
+        AudioManager.Instance?.StopMusic();
         SceneManager.LoadScene(gameSceneName);
     }
 

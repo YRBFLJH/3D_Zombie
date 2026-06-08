@@ -19,7 +19,7 @@ public enum SaveMessageType
     WorldSaveAck = 36,
     DeleteRoomRequest = 37,
     DeleteRoomResponse = 38,
-    ClearAllSaves = 42,
+    ClearAllSaves = 44,
     PlayerLoadData = 45,
 }
 
@@ -215,8 +215,8 @@ public static class SaveWireCodec
 
     public static byte[] BuildClearAllSaves()
     {
-        // Empty message: just outer tag (42<<3)|2 = 338 = 0xD2 0x02 + length 0
-        return new byte[] { 0xD2, 0x02, 0x00 };
+        // Empty message: just outer tag (44<<3)|2 = 354 = 0xE2 0x02 + length 0
+        return new byte[] { 0xE2, 0x02, 0x00 };
     }
 
     public static byte[] BuildDeleteRoomRequest(int playerId, int roomId)

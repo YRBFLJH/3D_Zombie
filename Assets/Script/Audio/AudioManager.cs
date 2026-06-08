@@ -1,40 +1,50 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 public class AudioManager : MonoBehaviour
 {
-    public static AudioManager Instance;
+    public static AudioManager Instance { get; private set; }
 
-    [Header("音频源池")]
-    public AudioSource musicSource;
-    public AudioSource[] sfxSources;
+    [Header("拖入三个音乐文件")]
+    public AudioClip themeMusic;
+    public AudioClip shootSound;
+    public AudioClip reloadSound;
 
+    private AudioSource musicSource;
+    private AudioSource[] sfxSources;
     private int nextSfxIndex;
 
     void Awake()
     {
-        if (Instance == null) Instance = this;
+        if (Instance == null)
+        {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
         else { Destroy(gameObject); return; }
 
-        if (sfxSources == null || sfxSources.Length == 0)
+        musicSource = gameObject.AddComponent<AudioSource>();
+        musicSource.playOnAwake = false;
+        musicSource.spatialBlend = 0f;
+
+        sfxSources = new AudioSource[8];
+        for (int i = 0; i < 8; i++)
         {
-            // 自动创建8个SFX AudioSource
-            sfxSources = new AudioSource[8];
-            for (int i = 0; i < 8; i++)
-            {
-                GameObject obj = new GameObject("SFX_" + i);
-                obj.transform.SetParent(transform);
-                sfxSources[i] = obj.AddComponent<AudioSource>();
-                sfxSources[i].playOnAwake = false;
-                sfxSources[i].spatialBlend = 1f;
-                sfxSources[i].maxDistance = 50f;
-            }
+            GameObject obj = new GameObject("SFX_" + i);
+            obj.transform.SetParent(transform);
+            sfxSources[i] = obj.AddComponent<AudioSource>();
+            sfxSources[i].playOnAwake = false;
+            sfxSources[i].spatialBlend = 1f;
+            sfxSources[i].maxDistance = 150f;
+            sfxSources[i].rolloffMode = AudioRolloffMode.Linear;
         }
+
+        if (FindObjectOfType<AudioListener>() == null)
+            gameObject.AddComponent<AudioListener>();
     }
 
-    public void PlaySFX(AudioClip clip, Vector3 position, float volume = 1f)
+    void PlaySFX(AudioClip clip, Vector3 position, float volume = 1f)
     {
-        if (clip == null || sfxSources == null) return;
+        if (clip == null) return;
 
         AudioSource source = sfxSources[nextSfxIndex];
         nextSfxIndex = (nextSfxIndex + 1) % sfxSources.Length;
@@ -44,10 +54,22 @@ public class AudioManager : MonoBehaviour
         source.PlayOneShot(clip);
     }
 
-    public void PlayMusic(AudioClip clip)
+    public void PlayShootSound(Vector3 position)
     {
-        if (musicSource == null || clip == null) return;
-        musicSource.clip = clip;
+        PlaySFX(shootSound, position);
+    }
+
+    public void PlayReloadSound(Vector3 position)
+    {
+        PlaySFX(reloadSound, position);
+    }
+
+    public void PlayThemeMusic()
+    {
+        if (themeMusic == null || musicSource == null) return;
+        if (musicSource.isPlaying && musicSource.clip == themeMusic) return;
+
+        musicSource.clip = themeMusic;
         musicSource.loop = true;
         musicSource.Play();
     }
